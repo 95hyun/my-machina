@@ -10,5 +10,7 @@
 !/.claude/skills/
 !/.claude/agents/
 !/.claude/hooks/
+!/.claude/ci/
+!/.github/
 
 .DS_Store

@@ -23,7 +23,7 @@
 CLAUDE.md에 쓴 규칙은 지켜질 수도 있고 아닐 수도 있다(회사 하네스 실측 준수율 62%). 그래서 **되돌리기 어려운 사고**(엉뚱한 계정으로 커밋·push, 병렬 세션 커밋 섞임)만 hook으로 기계적으로 막고, 나머지는 스킬에 맡긴다.
 
 ### 4. 상시 비용은 최소로
-매 세션 컨텍스트에 들어가는 건 CLAUDE.md와 스킬·에이전트 description뿐 — 합계 약 2k 토큰(회사 하네스 약 9k). 무거운 절차는 스킬 본문에 두고 호출할 때만 로드한다. 부작용 있는 스킬은 `disable-model-invocation`으로 description조차 상주시키지 않는다.
+매 세션 컨텍스트에 들어가는 건 CLAUDE.md와 스킬·에이전트 description뿐 — 합계 약 7KB — 하네스 CI가 예산(`budget.json`)으로 관리한다(회사 하네스는 약 9k 토큰). 무거운 절차는 스킬 본문에 두고 호출할 때만 로드한다. 부작용 있는 스킬은 `disable-model-invocation`으로 description조차 상주시키지 않는다.
 
 ### 5. 노력은 위험만큼
 명확하고 기계적인 작업은 메인 세션이 직접, 파급이 크거나 병렬 가능한 작업만 @coder에 위임한다. 한두 파일짜리 수정에 ready→go→qa→ship 의식을 강요하지 않고, qa는 실행해 봐야 아는 확인 포인트가 있을 때만 돈다.
@@ -48,7 +48,7 @@ flowchart TB
 
     subgraph CTX["상시 컨텍스트 (매 세션 로드)"]
         CM["CLAUDE.md<br/>원칙 · 위임 규율 · 계정 규칙"]
-        DS["description<br/>ready · coder · qabot<br/>(트리거 정본)"]
+        DS["description<br/>ready · coder · qabot ·<br/>harco · secuman<br/>(트리거 정본)"]
     end
 
     subgraph HEAD["메인 세션 = head (결정 · 검증)"]
@@ -64,6 +64,7 @@ flowchart TB
 
     C["@coder<br/>구현 (sonnet)"]
     QB["@qabot<br/>독립 실측 (sonnet)"]
+    RV["@harco · @secuman<br/>하네스 리뷰 · 보안 감사 (opus)"]
     QA[("recipe · scenarios · reports<br/>repo/.specs/qa/")]
     SPEC[("intent.md · spec.md<br/>repo/.specs/slug/")]
 
@@ -88,6 +89,8 @@ flowchart TB
     M -- "허가 후 [run] 포인트 위임" --> QB
     QB -- "레시피·시나리오 Read · 리포트 Write" --> QA
     QB -- "✅/❌/⛔ + 근거" --> M
+    M -- "하네스 변경 · 새 진입점" --> RV
+    RV -- "심각도별 판정 (read-only)" --> M
     M --> T
     C --> T
     QB --> T
@@ -151,8 +154,10 @@ flowchart LR
 └── .claude/
     ├── settings.json           hook 배선 + env
     ├── skills/{ready,go,qa,ship}/
-    ├── agents/{coder,qabot}.md
-    └── hooks/{git-guard,review-suggest}.sh
+    ├── agents/{coder,qabot,harco,secuman}.md
+    ├── hooks/{git-guard,review-suggest}.sh
+    └── ci/{harness_ci.py,budget.json}   하네스 CI
+.github/workflows/harness-ci.yml        push마다 macOS에서 CI
 
 <workspace>/<project>/          각자 독립 git repo — 이 repo는 추적하지 않는다
 <workspace>/<project>/.specs/   작업 문서(intent·spec)와 qa/(recipe·scenarios·reports) — 각 repo의 .git/info/exclude로 제외
@@ -169,7 +174,7 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 | 질문 | 왜 하고, 끝나면 무엇이 달라지나 | 어떻게 할 것인가 |
 | 언제 | 새 프로젝트 · 제품 재량 큰 기능만 | 비자명한 작업 전부 |
 | 섹션 | Problem · Proposed outcome · Non-goals · Constraints · Open questions | 요구사항 · 전제 · 결정 표 · 작업(risk) · 확인 포인트 · 결과 |
-| 상태 | draft → confirmed (사용자 확인) | ready → implemented → shipped |
+| 상태 | draft → confirmed (사용자 확인) | ready → implemented → qa-passed → shipped |
 | 위치 | 기능: `.specs/<slug>/intent.md` · 프로젝트 전체: `.specs/intent.md` | `.specs/<slug>/spec.md` |
 | 역할 | 범위의 기준선 — 확정 후 Problem·Outcome이 바뀌면 스코프 이탈 신호 | 구현·검증·리뷰의 입력 |
 
@@ -202,7 +207,7 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 - **작업장**: 기본은 현재 브랜치(main) 직접. 다른 세션과 겹치면 worktree 제안
 - **구현 분기**: spec의 `risk`가 MECHANICAL → 직접 / RISKY·병렬 → @coder (spec 경로·좌표·검증 명령 동봉)
 - **검증**: `[static]` 확인 포인트 명령의 exit code 캡처, 평가 불가는 `미검증`, 실패 수정 후엔 **전체** 재실행. `[run]` 포인트는 판정하지 않고 `/qa`로 넘긴다
-- **리뷰**: 30줄 초과 또는 로직·상태·계약 변경 시 내장 `code-review`. intent가 있으면 Proposed outcome(빠진 것)·Non-goals(넘친 것)와 대조
+- **리뷰**: 30줄 초과 또는 로직·상태·계약 변경 시 내장 `code-review`. 하네스 변경은 `@harco`, 셸·권한·IPC·민감 데이터·배포 스크립트 변경은 내장 `security-review`(+새 진입점이면 `@secuman`). intent가 있으면 Proposed outcome(빠진 것)·Non-goals(넘친 것)와 대조
 - **보고**: spec `status: implemented` + 결과 기록
 
 ### `/qa` — 런타임·UI 확인 포인트를 독립 실측
@@ -219,7 +224,7 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 
 - **프리플라이트**: 커밋 신원이 개인 계정인지, staged 목록에 남의 변경이 섞이지 않았는지, `[run]` 포인트가 QA 없이 남지 않았는지
 - **커밋**: 그 repo의 메시지 스타일을 따르고 사용자 컨펌 후 커밋
-- **push**: origin이 내 계정 소유일 때만 `git push origin HEAD` (남의 repo는 사용자 결정)
+- **push**: origin이 내 계정 소유일 때만 `git push origin HEAD` (남의 repo는 git-guard가 deny, 기여는 사용자 결정)
 - **보관**: spec `status: shipped` → `.specs/_archive/<날짜>-<slug>/`
 
 ---
@@ -242,6 +247,19 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 - 속도 규약: 서술 턴 금지 · 독립 호출 병렬 · 스크린샷 되읽기 최대 2장 · 포인트당 도구 15회 상한 · 2~3회 막히면 `⛔ BLOCKED + 질문`
 - 재현 불가(음성·하드웨어·1초 미만 타이밍)는 시도 없이 `⛔ 미확인(도구 제약)`
 
+### `@harco` — 하네스 리뷰어 (opus, read-only)
+두 층으로 리뷰한다. **기계 층**은 하네스 CI(아래 [하네스 CI](#하네스-ci))로 성능 회귀를 숫자로 판정하고, **판단 층**은 하네스가 비대해질 때의 진짜 문제(토큰보다 **이중 체계 충돌과 주의력 희석**)를 본다. 하네스 파일을 고치면 review-suggest hook이 호출을 환기한다.
+- 성능 판정: 예산 상향의 정당성 · 테스트 없는 hook 판정 변경(🔴) · 예산 안이라도 상시 비용 증가분의 가치 · 지연 1.2배 이상의 원인
+- 🔴 이중 경로·규칙 충돌 · 깨진 참조 · 압축 중 구속력 소실 · hook 배선 불일치 · "hook이 막는다"는 주장의 실제 집행 여부 · 사고 방지 규칙 소실 · 부작용 스킬의 `disable-model-invocation` 누락
+- 🟡 네이티브 중복(대체 기능을 이름으로 명시) · 상시 규칙→hook 이관 가능성 · description 라우팅 품질 · CLAUDE.md↔메모리 이중 등재 · 워크스페이스 고정값 누수 · 모델 티어
+- 판정 근거는 상시 컨텍스트 비용 모델(CLAUDE.md 전량 > description > 스킬 본문 > hook 0)
+
+### `@secuman` — 보안 감사 (opus, read-only)
+웹 OWASP가 아니라 **"내 맥에서 도는 도구"의 위협 모델**. diff 단위는 내장 `security-review`, 전체 감사·위협 모델 점검은 `@secuman`.
+- 공격면: hook 입력 JSON·transcript·소켓·MCP 요청·웹뷰 IPC 같은 신뢰 경계를 넘는 입력 / 셸 호출·권한 자동 승인 / `~/.claude` 대화 원문·토큰 / DMG·install 스크립트 / 의존성
+- 🔴 명령·경로 인젝션 · 권한 프롬프트 자동 승인의 출처 미검증 · 인증 없는 로컬 IPC · Tauri 권한 과다 · 하드코딩 비밀 · transcript 원문 2차 유출
+- 🟡 `~` 파일 권한 · `/tmp` 고정 경로 · 무검증 설치·격리 해제 · MCP 파괴적 도구 무확인 · 로그 내 민감정보 · CVE
+
 ---
 
 ## Hooks
@@ -250,20 +268,46 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 
 | 판정 | 조건 |
 |---|---|
-| **deny** | 커밋 신원 ≠ 개인 이메일(`ME_EMAIL`) |
-| **deny** | 세션이 바인딩된 작업장과 같은 repo의 다른 worktree에서 git 쓰기 |
-| **deny** | 현재 브랜치와 다른 브랜치를 push |
-| **deny** | `gh pr/repo/release/…` 실행 시 활성 gh 계정 ≠ 개인 계정(`ME_GH`) |
-| ask | push 대상 origin이 내 계정 소유가 아님 (fork·외부 프로젝트) |
-| ask | force-push · 원격 브랜치 삭제 |
-| ask | 다른 세션이 쓰는 작업장에서 checkout / reset --hard / clean / add -A |
+| 판정 | 조건 | 탈출 |
+|---|---|---|
+| **deny** | 커밋 신원 ≠ 개인 이메일(`ME_EMAIL`) — `-c user.email=`·`GIT_AUTHOR_EMAIL=` 위조, `--git-dir`·서브셸 `cd` 경로 포함 | 없음 |
+| **deny** | `gh pr/repo/release/…` 실행 시 활성 gh 계정 ≠ 개인 계정(`ME_GH`) | 없음 |
+| **deny** | 세션이 바인딩된 작업장과 같은 repo의 다른 worktree에서 git 쓰기 | `GIT_GUARD_REBIND=1` |
+| **deny** | 현재 브랜치와 다른 브랜치를 push | `GIT_GUARD_OK=1` |
+| **deny** | push 대상 origin이 내 계정 소유가 아님 (fork·외부 프로젝트) | `GIT_GUARD_OK=1` |
+| ask | force · mirror · all push, 원격 브랜치 삭제(`--delete`·`:ref`) | — |
+| ask | 다른 세션이 쓰는 작업장에서 checkout / rebase / reset --hard / clean / restore / stash / branch -D / add -A | — |
 
+- **탈출 토큰은 명령 맨 앞 env 접두로만 유효**하다. 커밋 메시지·인자 속 토큰은 무시한다. 붙이는 건 사용자가 그 명령을 명시 승인한 뒤에만 한다.
+- 판정은 따옴표 구간을 지운 사본으로 한다. 그래서 `echo "git push …"` 같은 문자열을 명령으로 오인하지 않는다.
 - 항상 exit 0, 판단 불가 시 무개입 — 무관한 Bash를 깨뜨리지 않는다
-- 탈출구: `GIT_GUARD_REBIND=1`(의도된 작업장 전환), `GIT_GUARD_OK=1`(사용자 승인 하 1회 통과)
-- 세션 바인딩 상태: `~/.claude/git-guard/<session_id>.tsv` (24시간 미사용 시 정리)
+- 세션 바인딩 상태: `~/.claude/git-guard/<session_id>.tsv` (12시간 미사용 시 정리)
 
 ### `review-suggest.sh` (PostToolUse · Edit|Write|MultiEdit)
 코드(`.swift .rs .ts .py …`)나 하네스 파일이 수정되면 "일단락되면 리뷰하라"는 힌트를 **Claude 컨텍스트에만** 주입한다. 사용자 화면 출력 0, 세션당 프로젝트별 1회.
+
+---
+
+## 하네스 CI
+
+하네스 변경이 **하네스 성능을 해치지 않는지** 기계로 판정한다. 같은 스크립트가 로컬(@harco Step 0)과 GitHub Actions(push·PR마다, macOS 러너)에서 돈다.
+
+```bash
+python3 .claude/ci/harness_ci.py                 # 전체 검사
+python3 .claude/ci/harness_ci.py --base HEAD~1   # + 기준 커밋 대비 변화량
+```
+
+하네스 성능은 세 축으로 정의한다.
+
+| 축 | 무엇을 | 어떻게 | 실패 조건 |
+|---|---|---|---|
+| **상시 컨텍스트** | 매 세션 들어가는 토큰 | CLAUDE.md + 자동 호출 가능한 스킬·에이전트 description 바이트 (`disable-model-invocation` 스킬은 0) | `budget.json` 초과 |
+| **hook 지연** | 모든 Bash·Edit 호출에 붙는 시간 | 시나리오별 중앙값 15회, 기준 커밋의 hook을 git 객체에서 꺼내 같은 샌드박스에서 비교 | 예산 초과, 기준 대비 1.5배+20ms 초과 |
+| **동작 회귀** | 가드가 막을 걸 막고 통과시킬 걸 통과시키나 | 격리 샌드박스(가짜 HOME·repo·worktree·gh 설정)에서 git-guard·review-suggest 판정 케이스 + 구조 정합(frontmatter·배선·참조·상태 어휘·고정 경로) | 기대와 다른 판정, fail-open 위반, 정합 위반 |
+
+- 예산은 `.claude/ci/budget.json`. 올리려면 같은 커밋에서 수정하고 사유를 남긴다 — @harco가 상향의 정당성을 따로 판정한다.
+- hook 판정 로직을 바꾸면 `harness_ci.py`에 기대 판정 케이스를 같이 추가한다(없으면 @harco가 🔴).
+- 표준 라이브러리 python3 + jq·git·bash만 필요하다. 실제 계정·repo·`~/.claude`를 건드리지 않는다.
 
 ---
 
@@ -309,6 +353,9 @@ GH_CONFIG_DIR=<개인 gh 설정 경로> gh auth status   # 개인 계정
 | "spec 없으면 go는 ready만", "멈춤 = 산출물 경계", "기본안 = 요청안" | agent-docs |
 | intent.md draft→confirmed 게이트 (Success metric 제거 · Non-goals 추가로 변형) | agent-docs |
 | /qa 위임·허가제·리포트 불신 검증·학습 회수, QA 봇 속도 규약 (Playwright 웹 봇 → 레시피 기반 범용 @qabot으로 변형) | agent-docs |
+| @harco 하네스 리뷰어 (버전 동기화·디렉토리 정책 등 회사 전용 항목 제거, **성능 CI 신설**로 확장) | agent-docs |
+| 하네스 CI: harness_lint의 기계 점검 + hook 회귀 테스트·상시 컨텍스트/지연 예산 (신규) | agent-docs 확장 |
+| @secuman 보안 감사 (Rails/Next/RN OWASP → 로컬 네이티브 위협 모델로 재작성) | agent-docs |
 | description = 트리거 정본, 상시 비용 모델 | agent-docs |
 | "결정은 누구의 것인가", grounds-gate, `N/A — 이유` 기록 | dryforge |
 | exit code 증거 판정, "평가 못 한 체크는 실패" | dryforge |
@@ -316,8 +363,9 @@ GH_CONFIG_DIR=<개인 gh 설정 경로> gh auth status   # 개인 계정
 
 | 버린 것 | 이유 |
 |---|---|
-| Jira·Slack·배포 감시·위키·지표 에이전트 | 팀·외부 시스템 전제 |
-| 스택별 리뷰어 6종, 반증 게이트 | 1인 볼륨엔 과함 → 내장 `code-review` |
+| Jira·Slack·배포 감시·위키·지표 에이전트 (wikiman·wikibot·wiki-scout·bigman·datacoach·perfscout·tracko·sentryman) | 팀·외부 시스템 전제 |
+| appbot · rails-schema-explorer · fig · careerbot | iOS 시뮬·Rails·Figma 전제 / 경력 기록은 회사 하네스에서만 |
+| 스택별 리뷰어(beco·neco·appco), 반증 게이트 | 1인 볼륨엔 과함 → 내장 `code-review` |
 | QA 환경 표·DB 세팅·로그인 세션·웹 스모크 e2e | 웹 서비스·QA DB 전제 |
 | 보호 브랜치 규칙 | 1인 개발은 main 직접 커밋이 정상 |
 | 투명성 헤더, 버전 4곳 동기화 | 비용 > 가치 |
@@ -329,5 +377,5 @@ GH_CONFIG_DIR=<개인 gh 설정 경로> gh auth status   # 개인 계정
 ## 하네스를 바꿀 때
 1. 상시 비용부터 따진다 — CLAUDE.md에 넣을 것인가, 스킬 본문인가, hook인가
 2. hook은 진짜 사고 위험에만, 항상 fail-open(무관한 호출을 깨지 않게)
-3. 스크립트는 `bash -n` 문법 확인 + 가짜 입력으로 시나리오 테스트
-4. 워크스페이스 루트(이 repo)에 커밋
+3. `python3 .claude/ci/harness_ci.py --base HEAD` 통과 — hook 판정을 바꿨으면 케이스부터 추가
+4. `@harco` 리뷰 후 워크스페이스 루트(이 repo)에 커밋 — push하면 GitHub Actions가 같은 CI를 다시 돌린다

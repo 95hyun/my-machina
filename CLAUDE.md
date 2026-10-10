@@ -23,7 +23,7 @@
 - 워크스페이스 계정 = **95hyun <kingmandoo95@gmail.com>**. `~/.gitconfig`의 `includeIf "gitdir:<workspace>/"`(현재 머신: `~/my-dev/`)가 커밋 신원과 개인 SSH 키를 자동 적용한다 — repo 로컬 `user.*`·`core.sshCommand` 덮어쓰기 금지. `gh`는 settings.json `env.GH_CONFIG_DIR`로 개인 계정 설정을 쓴다.
 - 1인 개발이라 main 직접 커밋이 기본. 커밋·push는 요청 시에만, add는 파일 명시.
 - 남의 repo: `logic-pro-mcp`(origin=MongLong0214 upstream), `PalworldModManager`(origin=h-taek) — push 금지, 기여는 사용자 결정.
-- `git-guard` hook이 신원 불일치·세션 작업장 혼선·남의 repo push·회사 계정 gh를 막는다. deny 시 우회 금지, 사유를 보고한다.
+- `git-guard` hook이 신원 불일치·회사 계정 gh(면제 불가)와 세션 작업장 혼선·다른 브랜치 push·남의 repo push를 deny한다. deny 시 우회 금지, 사유를 보고한다 — 탈출 토큰(`GIT_GUARD_REBIND=1`·`GIT_GUARD_OK=1`, 명령 맨 앞 접두만 유효)은 사용자가 그 명령을 명시 승인한 뒤에만 붙인다.
 
 ## 프로젝트 맵 (검증 명령 = `/go` 완료 증거)
 | 프로젝트 | 스택 | 검증 | 비고 |
@@ -39,4 +39,5 @@
 
 ## 하네스 변경 규칙
 - 무언가 추가하기 전 상시 비용을 따진다: 이 파일 전량·스킬/에이전트 description은 매 세션, 스킬 본문은 호출 시, hook은 0토큰. 진짜 사고 위험만 hook으로 강제하고 나머지는 스킬로.
-- 스킬·에이전트 트리거의 정본은 frontmatter description — 이 파일에 키워드 표를 두지 않는다. 부작용 있는 스킬(go·ship)은 `disable-model-invocation: true`.
+- 하네스 변경은 `python3 .claude/ci/harness_ci.py` 통과가 전제다(push마다 GitHub Actions에서도 돈다). hook 판정을 바꾸면 테스트 케이스도 같이 추가하고, 예산(`.claude/ci/budget.json`) 상향은 사유를 남긴다.
+- 스킬·에이전트 트리거의 정본은 frontmatter description — 이 파일에 키워드 표를 두지 않는다. 부작용 있는 스킬(go·qa·ship)은 `disable-model-invocation: true`.

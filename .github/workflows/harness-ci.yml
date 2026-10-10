@@ -1,0 +1,28 @@
+name: harness-ci
+
+# 하네스 성능 회귀 방지: 구조 정합 · hook 회귀 테스트 · 상시 컨텍스트/ hook 지연 예산.
+# 실제 사용 환경이 macOS라 BSD 유틸 차이를 잡기 위해 macos 러너에서 돈다.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  ci:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run harness CI
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          BASE="${PR_BASE:-$PUSH_BEFORE}"
+          # 첫 push(before=000…)나 수동 실행이면 직전 커밋과 비교
+          case "$BASE" in ""|0000000000000000000000000000000000000000) BASE="HEAD~1" ;; esac
+          python3 .claude/ci/harness_ci.py --base "$BASE" --summary "$GITHUB_STEP_SUMMARY"

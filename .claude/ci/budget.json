@@ -1,0 +1,17 @@
+{
+  "_comment": "하네스 성능 예산. 올리려면 이 파일을 같은 커밋에서 수정하고 커밋 메시지에 사유를 남긴다 — harco가 예산 상향을 별도 판정한다.",
+  "always_on_bytes": {
+    "CLAUDE.md": 5500,
+    "descriptions": 2400,
+    "total": 7500
+  },
+  "hook_latency_ms_median": {
+    "git-guard.sh:noop": 60,
+    "git-guard.sh:git": 450,
+    "review-suggest.sh:noop": 60,
+    "review-suggest.sh:hit": 150
+  },
+  "latency_regression_ratio": 1.5,
+  "side_effect_skills": ["go", "qa", "ship"],
+  "path_leak_allow": ["CLAUDE.md", "README.md", ".claude/settings.json"]
+}
