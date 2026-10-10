@@ -29,7 +29,7 @@
 | 프로젝트 | 스택 | 검증 | 비고 |
 |---|---|---|---|
 | claude-pets | Swift/SwiftPM | `swift build`, 앱 반영은 `./build-app.sh` | UI 확인은 소켓 snapshot 명령(README) — screencapture 권한 없음 |
-| jarvis | Swift/SwiftPM | `swift build && swift test` | |
+| my-machina-voice | Swift/SwiftPM | `swift build && swift test`, 앱 반영은 `./install.sh` | 음성 오케스트레이터(구 jarvis). QA 는 `tools/mvctl` 소켓 |
 | logic-pro-mcp | Swift MCP | `swift test`, 공유 라우팅·상태 변경 시 `--no-parallel` | 외부 프로젝트, CONTRIBUTING.md 규칙 우선 |
 | PalworldModManager | Tauri+Rust | `cargo check --manifest-path src-tauri/Cargo.toml` | fork |
 | cc-monitor | Swift/SwiftPM | `swift build` | 사용 중단(claude-pets가 후속) |
