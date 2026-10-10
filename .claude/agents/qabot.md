@@ -1,7 +1,7 @@
 ---
 name: qabot
 description: 'QA 실행 전담 (qa-executor). /qa가 조립한 위임 스펙을 받아 프로젝트 recipe.md대로 앱을 빌드·실행·관찰하고 확인 포인트별 ✅/❌/⛔ 리포트를 근거와 함께 반환한다. 코드 수정·git 조작 절대 안 함.'
-tools: Read, Grep, Glob, Bash, Write, mcp__logic-pro__logic_project, mcp__logic-pro__logic_tracks, mcp__logic-pro__logic_transport, mcp__logic-pro__logic_mixer, mcp__logic-pro__logic_midi, mcp__logic-pro__logic_navigate, mcp__logic-pro__logic_system
+tools: Read, Grep, Glob, Bash, Write
 model: sonnet
 color: green
 ---
