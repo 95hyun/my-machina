@@ -1,6 +1,6 @@
-# machina — my-dev 개인 사이드프로젝트 하네스
+# my-machina — my-dev 개인 사이드프로젝트 하네스
 
-> Deus ex machina. repo: `95hyun/machina`(private)
+> Deus ex machina. repo: `95hyun/my-machina`(private)
 
 1인 개발. 하위 디렉토리는 각자 독립 git repo, 이 파일과 `.claude/`는 my-dev 루트 repo가 관리한다.
 **세션은 `~/my-dev` 루트에서 시작한다** — 하위 repo에서 시작하면 이 파일만 로드되고 `.claude/`의 hook·env·스킬·에이전트는 빠진다.

@@ -1,7 +1,7 @@
-# machina
+# my-machina
 
 > *Deus ex machina* — 무대 위 기계 장치(machina)에서 내려와 막힌 이야기를 푸는 신.
-> 단, 이 machina는 결말을 마음대로 바꾸지 않는다. **결정은 사용자의 것이다.**
+> 단, my-machina는 결말을 마음대로 바꾸지 않는다. **결정은 사용자의 것이다.**
 
 `~/my-dev` 개인 사이드프로젝트(1인 개발)를 위한 Claude Code 하네스.
 회사 하네스 agent-docs(my-ringle-orchestrator-v2)의 위임·가드 뼈대와 [dryforge](https://github.com/prekuter/dryforge)의 질문 설계·증거 판정을 결합하고, 팀·외부 시스템 전제는 걷어냈다.
@@ -39,7 +39,7 @@ CLAUDE.md에 쓴 규칙은 지켜질 수도 있고 아닐 수도 있다(회사 �
 ## 아키텍처
 
 ```
-~/my-dev/                       ← machina repo (화이트리스트 .gitignore: 하네스 파일만 추적)
+~/my-dev/                       ← my-machina repo (화이트리스트 .gitignore: 하네스 파일만 추적)
 ├── CLAUDE.md                   상시 규칙: 원칙 · 위임 규율 · git/계정 · 프로젝트 검증 맵
 ├── README.md                   이 문서
 ├── .claude/
@@ -54,7 +54,7 @@ CLAUDE.md에 쓴 규칙은 지켜질 수도 있고 아닐 수도 있다(회사 �
 │       └── review-suggest.sh   PostToolUse(Edit|Write): 리뷰 힌트 주입
 │
 ├── claude-pets/                ┐
-├── jarvis/                     │ 각자 독립 git repo (machina가 추적하지 않음)
+├── jarvis/                     │ 각자 독립 git repo (my-machina가 추적하지 않음)
 ├── logic-pro-mcp/              │ 작업 문서는 <project>/.specs/ — 각 repo .git/info/exclude로 제외
 ├── PalworldModManager/         │
 └── cc-monitor/                 ┘
