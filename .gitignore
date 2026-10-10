@@ -1,0 +1,13 @@
+# my-dev 루트 repo는 하네스만 추적한다 — 하위 프로젝트는 각자 독립 repo.
+/*
+!/.gitignore
+!/CLAUDE.md
+!/.claude/
+
+/.claude/*
+!/.claude/settings.json
+!/.claude/skills/
+!/.claude/agents/
+!/.claude/hooks/
+
+.DS_Store

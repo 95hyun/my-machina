@@ -1,0 +1,41 @@
+---
+name: go
+description: 'ready가 만든 spec.md대로 구현·검증하고 커밋 전에 멈춘다. spec이 없으면 ready만 하고 멈춘다.'
+argument-hint: '[project/slug]'
+disable-model-invocation: true
+---
+
+# Go — spec 기반 구현·검증 (커밋 전 정지)
+
+작업 루프 2단계. 입력은 `<project>/.specs/<slug>/spec.md`.
+
+## 0. 게이트
+- spec 선택: 인자 > 대화 중인 slug > `*/.specs/*/spec.md` 중 `status: ready` 최신(복수면 AskUserQuestion 1회).
+- spec이 없으면 `ready` 스킬을 로드해 실행하고 **거기서 종료**한다(준비 턴의 산출물은 spec까지).
+- `status: implemented`(수정 재진입)는 그대로 진행, `shipped`면 계속 여부 확인.
+
+## 1. 작업장
+- `git -C <repo> status --short`로 시작 상태를 기록한다. 이 세션이 만들지 않은 변경이 있으면 건드리지 말고 사용자에게 알린다.
+- 기본은 현재 브랜치(보통 main) 직접. spec `## 작업장`이 브랜치를 요구하거나 다른 세션이 같은 repo에서 작업 중이면 worktree(`EnterWorktree`)를 제안한다.
+
+## 2. 구현 — spec `## 작업`의 risk로 분기
+- **MECHANICAL / NONE**: 메인이 직접 구현.
+- **RISKY 또는 서로 독립인 작업 2개 이상**: `@coder`에 위임. 스펙 상단에 spec.md 경로(구현 전 Read 강제), 해당 작업 번호, `파일:라인` 좌표, 검증 명령을 넣는다. 파급이 크면 `model: "opus"`.
+- spec에 없는 결정 갈림길을 만나면 멈추고 묻는다(AskUserQuestion 1회). 범위 확장 금지 — 범위 밖 발견은 `.specs/findings.md`.
+
+## 3. 검증 — 증거만 인정
+- spec `## 확인 포인트`의 명령을 실행하고 **exit code를 캡처**한다: `<cmd> 2>&1 | tail -20; echo "exit=${PIPESTATUS[0]}"`.
+- 판정 규칙: 0이 아니면 실패. **평가하지 못한 체크(권한·하드웨어·실행 중인 Logic Pro 필요 등)는 통과가 아니라 "미검증 — 사유"**. "보기엔 맞다"는 근거가 아니다.
+- 앱 동작은 실측한다: claude-pets는 소켓 snapshot → PNG Read, 그 외는 로그·테스트 출력.
+- 실패는 고친 뒤 **전체 확인 포인트를 다시** 돌린다(부분 재실행으로 통과 선언 금지).
+
+## 4. 리뷰
+- diff가 30줄을 넘거나 로직 분기·상태·동시성·외부 계약이 바뀌었으면 내장 `code-review` 스킬을 Skill tool로 로드한다. 작성자(메인/coder)의 자기 평가는 리뷰를 대신하지 못한다.
+- 확정된 지적은 반영 후 3단계 재실행.
+
+## 5. 종료 보고
+- spec `status: implemented`, `## 결과`에 검증 명령→exit code·미검증 항목을 기록.
+- 보고: 변경 파일(`파일:라인`) · 검증 결과 원문 요약 · 미검증 항목 · 리뷰 결과 · "확인 후 `/ship`" 1줄.
+
+## DO NOT
+❌ 커밋·push(ship 담당) ❌ `git add -A` ❌ spec에 없는 개선·리팩터링 ❌ 실패·미검증을 숨긴 완료 보고

@@ -1,0 +1,42 @@
+# machina — my-dev 개인 사이드프로젝트 하네스
+
+> Deus ex machina. repo: `95hyun/machina`(private)
+
+1인 개발. 하위 디렉토리는 각자 독립 git repo, 이 파일과 `.claude/`는 my-dev 루트 repo가 관리한다.
+**세션은 `~/my-dev` 루트에서 시작한다** — 하위 repo에서 시작하면 이 파일만 로드되고 `.claude/`의 hook·env·스킬·에이전트는 빠진다.
+
+## 원칙
+- 사용자 명시 지시가 최우선. 요청된 변경만 한다(무관한 정리·리팩터링 금지).
+- **결정은 누구의 것인가**: 제품·도메인 결정은 사용자에게 묻고, 기술 결정은 선택지·트레이드오프·추천을 제시해 고르게 한다. 코드·관례로 이미 정해진 건 묻지 않는다.
+- 즉시 멈추고 확인: 요구 모호, breaking change, 사용자 데이터(`~/.claude-pets` 등) 삭제·이동, 배포물(DMG) 공개, 남의 repo로 push.
+- **자기 채점 불신**: "됐다"의 근거는 캡처한 exit code·실측(스냅샷·로그·테스트 출력)뿐이다. 평가하지 못한 체크는 통과가 아니라 "미검증 — 사유"로 보고한다.
+- 유지보수 주석: 비직관적 결정·외부 제약에만 한 줄 한국어 주석.
+
+## 작업 루프
+- 비자명한 작업(결정 갈림길·여러 파일·되돌리기 비싼 변경)은 `/ready → /go → /ship`. 산출물 = `<project>/.specs/<slug>/spec.md`(git 미추적). 한두 파일짜리 명확한 수정은 루프 없이 바로 한다.
+- **메인 세션 = 결정·검증**. 구현은 위험도로 가른다: MECHANICAL(패턴 반복·명확한 수정)은 직접, RISKY(파급 큼·상태/동시성·외부 계약) 또는 독립 병렬 작업은 `@coder`.
+- 서브에이전트 스폰 시 모델을 명시한다 — 정의에 모델이 없는 타입(Explore·general-purpose·Plan)은 미지정 시 세션 모델을 상속한다. 탐색·패턴 작업은 `model: "sonnet"`.
+- 위임 규율: 스펙에 `파일:라인` 좌표, 질문 왕복 최대 1회(2회째면 직접 착수), 추가 지시는 SendMessage(재스폰 금지), 미도착 결과 예측 금지, diff·검증은 메인이 직접 확인.
+- 범위 밖에서 발견한 문제는 고치지 말고 `<project>/.specs/findings.md`에 한 줄로 남긴다.
+
+## git·계정
+- my-dev 계정 = **95hyun <kingmandoo95@gmail.com>**. `~/.gitconfig`의 `includeIf "gitdir:~/my-dev/"`가 커밋 신원과 개인 SSH 키를 자동 적용한다 — repo 로컬 `user.*`·`core.sshCommand` 덮어쓰기 금지. `gh`는 settings.json `env.GH_CONFIG_DIR`로 개인 계정 설정을 쓴다.
+- 1인 개발이라 main 직접 커밋이 기본. 커밋·push는 요청 시에만, add는 파일 명시.
+- 남의 repo: `logic-pro-mcp`(origin=MongLong0214 upstream), `PalworldModManager`(origin=h-taek) — push 금지, 기여는 사용자 결정.
+- `git-guard` hook이 신원 불일치·세션 작업장 혼선·남의 repo push·회사 계정 gh를 막는다. deny 시 우회 금지, 사유를 보고한다.
+
+## 프로젝트 맵 (검증 명령 = `/go` 완료 증거)
+| 프로젝트 | 스택 | 검증 | 비고 |
+|---|---|---|---|
+| claude-pets | Swift/SwiftPM | `swift build`, 앱 반영은 `./build-app.sh` | UI 확인은 소켓 snapshot 명령(README) — screencapture 권한 없음 |
+| jarvis | Swift/SwiftPM | `swift build && swift test` | |
+| logic-pro-mcp | Swift MCP | `swift test`, 공유 라우팅·상태 변경 시 `--no-parallel` | 외부 프로젝트, CONTRIBUTING.md 규칙 우선 |
+| PalworldModManager | Tauri+Rust | `cargo check --manifest-path src-tauri/Cargo.toml` | fork |
+| cc-monitor | Swift/SwiftPM | `swift build` | 사용 중단(claude-pets가 후속) |
+
+## 기억의 역할 분담
+- auto-memory = 세션을 넘는 사실·선호. 이 파일 = 행동 규칙. 프로젝트 `CLAUDE.md` = 코드로 알 수 없는 검증법·함정만. spec = 작업 1건 인수인계.
+
+## 하네스 변경 규칙
+- 무언가 추가하기 전 상시 비용을 따진다: 이 파일 전량·스킬/에이전트 description은 매 세션, 스킬 본문은 호출 시, hook은 0토큰. 진짜 사고 위험만 hook으로 강제하고 나머지는 스킬로.
+- 스킬·에이전트 트리거의 정본은 frontmatter description — 이 파일에 키워드 표를 두지 않는다. 부작용 있는 스킬(go·ship)은 `disable-model-invocation: true`.

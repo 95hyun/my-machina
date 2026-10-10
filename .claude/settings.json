@@ -1,0 +1,31 @@
+{
+  "env": {
+    "GH_CONFIG_DIR": "/Users/hyun/.config/gh-95hyun"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/git-guard.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/review-suggest.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
