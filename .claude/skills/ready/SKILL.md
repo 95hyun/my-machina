@@ -6,7 +6,7 @@ argument-hint: '[project] <요청 요약>'
 
 # Ready — 검토 후 spec 박제, 착수 전 정지
 
-작업 루프 1단계(ready → go → ship). 산출물은 `<project>/.specs/<slug>/spec.md`(+ 프로젝트급이면 `intent.md`)이며 go·ship이 읽는다. 양식은 같은 폴더의 `spec-template.md`·`intent-template.md`.
+작업 루프 1단계(ready → go → qa → ship). 산출물은 `<project>/.specs/<slug>/spec.md`(+ 프로젝트급이면 `intent.md`)이며 go·ship이 읽는다. 양식은 같은 폴더의 `spec-template.md`·`intent-template.md`.
 
 ## 워크플로우
 
@@ -27,7 +27,7 @@ argument-hint: '[project] <요청 요약>'
    - 제품·도메인 결정은 사용자의 답을 끌어낸다. 기술 결정은 선택지+추천을 제시한다.
 6. **분기**
    - 질문이 남으면 **spec을 쓰지 않는다**. 선택형은 AskUserQuestion(최대 4문항, 추천은 첫 옵션 "(Recommended)", description에 장단점 1줄) → 답을 받으면 같은 턴에 spec 작성. 자유서술형만 번호 목록으로 반환하고 종료.
-   - 모두 해소되면 `spec-template.md`대로 spec.md를 `status: ready`로 쓴다. 각 작업에 `risk`와 검증 명령(CLAUDE.md 프로젝트 맵 기준)을 달고, intent가 있으면 frontmatter `intent:`에 경로를 적고 확인 포인트를 Proposed outcome에서 끌어온다. 해소된 Open questions는 intent에도 ~~취소선~~+결론으로 반영.
+   - 모두 해소되면 `spec-template.md`대로 spec.md를 `status: ready`로 쓴다. 각 작업에 `risk`와 검증 명령(CLAUDE.md 프로젝트 맵 기준)을 달고, 확인 포인트마다 `[static]`/`[run]` 태그를 붙이고, intent가 있으면 frontmatter `intent:`에 경로를 적고 확인 포인트를 Proposed outcome에서 끌어온다. 해소된 Open questions는 intent에도 ~~취소선~~+결론으로 반영.
 7. **종료 보고** (6줄 이내): 요구사항 1줄 · 요청안 평가 · 대안(있을 때만) · 리스크 · spec 경로(+intent 경로·draft) · "intent·spec 확인 후 `/go`".
    - 이 정지는 허락 요청이 아니라 턴의 산출물 경계다. 구현은 이 요청의 범위 밖이다.
 

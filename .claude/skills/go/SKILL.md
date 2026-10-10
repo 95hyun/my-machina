@@ -28,9 +28,9 @@ disable-model-invocation: true
 - spec에 없는 결정 갈림길을 만나면 멈추고 묻는다(AskUserQuestion 1회). 범위 확장 금지 — 범위 밖 발견은 `.specs/findings.md`.
 
 ## 3. 검증 — 증거만 인정
-- spec `## 확인 포인트`의 명령을 실행하고 **exit code를 캡처**한다: `<cmd> 2>&1 | tail -20; echo "exit=${PIPESTATUS[0]}"`.
+- spec `## 확인 포인트`의 `[static]` 명령을 실행하고 **exit code를 캡처**한다: `<cmd> 2>&1 | tail -20; echo "exit=${PIPESTATUS[0]}"`.
 - 판정 규칙: 0이 아니면 실패. **평가하지 못한 체크(권한·하드웨어·실행 중인 Logic Pro 필요 등)는 통과가 아니라 "미검증 — 사유"**. "보기엔 맞다"는 근거가 아니다.
-- 앱 동작은 실측한다: claude-pets는 소켓 snapshot → PNG Read, 그 외는 로그·테스트 출력.
+- `[run]` 포인트(실행·화면·외부 앱 상태)는 여기서 판정하지 않는다 — 작성자가 채점하지 않도록 `/qa`(@qabot)로 넘기고 보고에 "QA 대기 N건"으로 적는다.
 - 실패는 고친 뒤 **전체 확인 포인트를 다시** 돌린다(부분 재실행으로 통과 선언 금지).
 
 ## 4. 리뷰
@@ -40,7 +40,7 @@ disable-model-invocation: true
 
 ## 5. 종료 보고
 - spec `status: implemented`, `## 결과`에 검증 명령→exit code·미검증 항목을 기록.
-- 보고: 변경 파일(`파일:라인`) · 검증 결과 원문 요약 · 미검증 항목 · 리뷰 결과 · "확인 후 `/ship`" 1줄.
+- 보고: 변경 파일(`파일:라인`) · 검증 결과 원문 요약 · 미검증 항목 · 리뷰 결과 · 다음 단계 1줄(`[run]` 포인트가 있으면 "`/qa`로 실측", 없으면 "확인 후 `/ship`").
 
 ## DO NOT
 ❌ 커밋·push(ship 담당) ❌ `git add -A` ❌ spec에 없는 개선·리팩터링 ❌ 실패·미검증을 숨긴 완료 보고

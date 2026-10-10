@@ -1,7 +1,7 @@
 ---
 slug: <slug>
 project: <project>
-status: ready   # ready → implemented → shipped
+status: ready   # ready → implemented → qa-passed → shipped
 intent: —       # 프로젝트급이면 intent.md 경로
 created: <YYYY-MM-DD>
 ---
@@ -33,7 +33,9 @@ created: <YYYY-MM-DD>
 | 2 | | | RISKY | @coder |
 
 ## 확인 포인트 (완료 기준)
-- [ ] <관찰 가능한 동작> — 검증: `<명령>` 또는 <실측 방법>
+<!-- [static] = 빌드·테스트 exit code로 판정(go) / [run] = 실행·화면·외부 앱 상태로만 판정(qa → @qabot) -->
+- [ ] [static] <관찰 가능한 동작> — 검증: `<명령>`
+- [ ] [run] <실행해서 봐야 아는 동작> — 관찰: <snapshot | 로그 | MCP 실측>
 
 ## 리스크
 - <무엇이 깨질 수 있고, 어떻게 알아채나>

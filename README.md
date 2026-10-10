@@ -17,7 +17,7 @@
 - 코드·관례로 이미 정해진 것 → 묻지 않는다
 
 ### 2. 추론은 믿되, 자기 채점은 믿지 않는다
-"됐다"의 근거는 캡처한 **exit code**와 **실측**(스냅샷·로그·테스트 출력)뿐이다. 평가하지 못한 체크는 통과가 아니라 `미검증 — 사유`. 작성자(메인 세션이든 @coder든)의 자기 평가는 리뷰를 대신하지 못한다.
+"됐다"의 근거는 캡처한 **exit code**와 **실측**(스냅샷·로그·테스트 출력)뿐이다. 평가하지 못한 체크는 통과가 아니라 `미검증 — 사유`. 작성자(메인 세션이든 @coder든)의 자기 평가는 리뷰를 대신하지 못하고, 실행해 봐야 아는 동작은 코드를 쓰지 않은 @qabot이 실측한다.
 
 ### 3. 프로즈는 권고, hook은 강제
 CLAUDE.md에 쓴 규칙은 지켜질 수도 있고 아닐 수도 있다(회사 하네스 실측 준수율 62%). 그래서 **되돌리기 어려운 사고**(엉뚱한 계정으로 커밋·push, 병렬 세션 커밋 섞임)만 hook으로 기계적으로 막고, 나머지는 스킬에 맡긴다.
@@ -26,7 +26,7 @@ CLAUDE.md에 쓴 규칙은 지켜질 수도 있고 아닐 수도 있다(회사 �
 매 세션 컨텍스트에 들어가는 건 CLAUDE.md와 스킬·에이전트 description뿐 — 합계 약 2k 토큰(회사 하네스 약 9k). 무거운 절차는 스킬 본문에 두고 호출할 때만 로드한다. 부작용 있는 스킬은 `disable-model-invocation`으로 description조차 상주시키지 않는다.
 
 ### 5. 노력은 위험만큼
-명확하고 기계적인 작업은 메인 세션이 직접, 파급이 크거나 병렬 가능한 작업만 @coder에 위임한다. 한두 파일짜리 수정에 ready→go→ship 의식을 강요하지 않는다.
+명확하고 기계적인 작업은 메인 세션이 직접, 파급이 크거나 병렬 가능한 작업만 @coder에 위임한다. 한두 파일짜리 수정에 ready→go→qa→ship 의식을 강요하지 않고, qa는 실행해 봐야 아는 확인 포인트가 있을 때만 돈다.
 
 ### 6. 멈춤은 허락 요청이 아니라 산출물 경계
 `/ready`의 산출물은 intent.md·spec.md까지다. "좋아요" 같은 승인성 말을 착수 지시로 해석하지 않고, 대안을 요청안 대신 슬쩍 기본안으로 바꾸지 않는다(**기본 진행안 = 요청안**).
@@ -48,7 +48,7 @@ flowchart TB
 
     subgraph CTX["상시 컨텍스트 (매 세션 로드)"]
         CM["CLAUDE.md<br/>원칙 · 위임 규율 · 계정 규칙"]
-        DS["description<br/>ready · coder<br/>(트리거 정본)"]
+        DS["description<br/>ready · coder · qabot<br/>(트리거 정본)"]
     end
 
     subgraph HEAD["메인 세션 = head (결정 · 검증)"]
@@ -58,10 +58,13 @@ flowchart TB
     subgraph SK["스킬 본문 (호출 시 로드)"]
         R["/ready"]
         G["/go"]
+        Q["/qa"]
         S["/ship"]
     end
 
-    C["@coder<br/>서브에이전트 (sonnet)"]
+    C["@coder<br/>구현 (sonnet)"]
+    QB["@qabot<br/>독립 실측 (sonnet)"]
+    QA[("recipe · scenarios · reports<br/>repo/.specs/qa/")]
     SPEC[("intent.md · spec.md<br/>repo/.specs/slug/")]
 
     subgraph HK["hooks (0 토큰 · settings.json 배선)"]
@@ -72,7 +75,7 @@ flowchart TB
     T["도구 실행<br/>Bash · Edit · Write"]
     REPO[("워크스페이스 하위 repo들")]
 
-    U -- "요청 · /ready /go /ship" --> M
+    U -- "요청 · /ready /go /qa /ship" --> M
     CM -. 규칙 .-> M
     DS -. 매칭 .-> M
     M -- "Skill tool" --> SK
@@ -82,8 +85,12 @@ flowchart TB
     M -- "RISKY · 병렬 작업 위임" --> C
     C -- "구현 전 Read" --> SPEC
     C -- "리포트 (파일:라인 · exit code · 질문)" --> M
+    M -- "허가 후 [run] 포인트 위임" --> QB
+    QB -- "레시피·시나리오 Read · 리포트 Write" --> QA
+    QB -- "✅/❌/⛔ + 근거" --> M
     M --> T
     C --> T
+    QB --> T
     T -- "실행 전" --> GG
     GG -- "deny / ask / 통과" --> T
     T --> REPO
@@ -91,7 +98,7 @@ flowchart TB
     RS -- "[review-hint] 주입" --> M
 ```
 
-- **판단은 한 곳에서**: 결정·검증은 메인 세션만 한다. @coder는 스펙을 코드로 옮기고, 갈림길에서는 스스로 정하지 않고 리포트로 되돌려 보낸다.
+- **판단은 한 곳에서**: 결정·검증은 메인 세션만 한다. @coder는 스펙을 코드로 옮기고, @qabot은 실행·관찰만 한다. 둘 다 갈림길에서 스스로 정하지 않고 리포트로 되돌려 보내며, 메인은 그 리포트를 근거 없이 믿지 않는다.
 - **인수인계는 문서로**: 스킬과 서브에이전트는 대화가 아니라 문서로 맥락을 주고받는다 — intent.md는 *왜·무엇*, spec.md는 *어떻게*. 세션이 바뀌어도 이어진다.
 - **강제는 hook으로**: git-guard는 메인이든 @coder든 모든 Bash 호출 앞에서 판정한다. 프롬프트 준수에 기대지 않는다.
 - **환기는 신호로**: review-suggest는 막지 않고 Claude 컨텍스트에 힌트만 넣는다. 사용자 화면에는 아무것도 뜨지 않는다.
@@ -114,7 +121,11 @@ flowchart LR
     C --> V
     V -->|실패| G
     V -->|통과 + 리뷰| I[("spec.md<br/>status: implemented")]
-    I --> SH["/ship<br/>커밋 · push"]
+    I -->|"[run] 포인트 있음"| QA["/qa<br/>허가 → @qabot 실측"]
+    QA -->|❌| G
+    QA -->|"전부 ✅"| QP[("spec.md<br/>status: qa-passed")]
+    I -->|"[static]만"| SH["/ship<br/>커밋 · push"]
+    QP --> SH
     SH --> A[(".specs/_archive/")]
 ```
 
@@ -139,12 +150,12 @@ flowchart LR
 ├── .gitignore                  화이트리스트: 하네스 파일만 추적
 └── .claude/
     ├── settings.json           hook 배선 + env
-    ├── skills/{ready,go,ship}/
-    ├── agents/coder.md
+    ├── skills/{ready,go,qa,ship}/
+    ├── agents/{coder,qabot}.md
     └── hooks/{git-guard,review-suggest}.sh
 
 <workspace>/<project>/          각자 독립 git repo — 이 repo는 추적하지 않는다
-<workspace>/<project>/.specs/   작업 문서 — 각 repo의 .git/info/exclude로 제외
+<workspace>/<project>/.specs/   작업 문서(intent·spec)와 qa/(recipe·scenarios·reports) — 각 repo의 .git/info/exclude로 제외
 ```
 
 ### 세션 시작 위치 (중요)
@@ -190,14 +201,23 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 - **intent 게이트**: 연결된 intent가 `draft`면 구현하지 않는다 — 남은 질문을 묻고, 요약을 보여준 뒤 사용자 확인을 받아 `confirmed`로 바꾼다
 - **작업장**: 기본은 현재 브랜치(main) 직접. 다른 세션과 겹치면 worktree 제안
 - **구현 분기**: spec의 `risk`가 MECHANICAL → 직접 / RISKY·병렬 → @coder (spec 경로·좌표·검증 명령 동봉)
-- **검증**: 확인 포인트 명령의 exit code 캡처, 평가 불가는 `미검증`, 실패 수정 후엔 **전체** 재실행
+- **검증**: `[static]` 확인 포인트 명령의 exit code 캡처, 평가 불가는 `미검증`, 실패 수정 후엔 **전체** 재실행. `[run]` 포인트는 판정하지 않고 `/qa`로 넘긴다
 - **리뷰**: 30줄 초과 또는 로직·상태·계약 변경 시 내장 `code-review`. intent가 있으면 Proposed outcome(빠진 것)·Non-goals(넘친 것)와 대조
 - **보고**: spec `status: implemented` + 결과 기록
+
+### `/qa` — 런타임·UI 확인 포인트를 독립 실측
+`disable-model-invocation` — `/qa`로만 실행. spec의 `[run]` 포인트(실행·화면·외부 앱 상태로만 판정 가능)가 있을 때만 의미가 있다.
+
+- **QA 자산** (`<project>/.specs/qa/`): `recipe.md`(빌드·실행·종료·관찰 수단·실데이터 보호·함정), `scenarios/<영역>.md`(박제 시나리오), `reports/`(qabot 리포트). 첫 QA 때 메인이 recipe 초안을 써서 승인받는다
+- **스펙 조립**: `[run]` 포인트 · recipe · 매칭 시나리오 · 실행 영향(띄워 둔 앱 재시작, 실데이터 변경과 원복 방법)
+- **허가**: 실행 / 수정 후 실행 / 보류 — 허가 없이는 스폰하지 않는다
+- **리포트 불신 검증**: 근거(스냅샷·로그·exit code·MCP 응답) 없는 ✅는 미검증으로 격하, ❌는 원인 확인 후 `/go` 재진입 제안. 전부 ✅면 `status: qa-passed`
+- **학습 회수**: 📌 후보를 recipe·시나리오·qabot 함정·findings로 분류해 결과 보고와 같은 턴에 승인 1회로 반영
 
 ### `/ship` — 커밋 → push → 보관
 `disable-model-invocation` — `/ship`으로만 실행.
 
-- **프리플라이트**: 커밋 신원이 개인 계정인지, staged 목록에 남의 변경이 섞이지 않았는지
+- **프리플라이트**: 커밋 신원이 개인 계정인지, staged 목록에 남의 변경이 섞이지 않았는지, `[run]` 포인트가 QA 없이 남지 않았는지
 - **커밋**: 그 repo의 메시지 스타일을 따르고 사용자 컨펌 후 커밋
 - **push**: origin이 내 계정 소유일 때만 `git push origin HEAD` (남의 repo는 사용자 결정)
 - **보관**: spec `status: shipped` → `.specs/_archive/<날짜>-<slug>/`
@@ -213,6 +233,14 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 - 리포트: 변경(`파일:라인`) · 검증(exit code·원문) · 가정 · 미해결 질문 4줄(발견 사실 / 선택지 / 권고 / 재개 시 할 일)
 - intent가 `draft`면 구현하지 않고 반환, intent와 어긋나는 구현은 조기 반환(intent 수정 금지)
 - 커밋·git 쓰기 금지
+
+### `@qabot` — QA 실행 전담 (sonnet)
+코드를 쓰지 않은 쪽이 실측한다는 원칙의 구현체이자, 스냅샷·로그 같은 무거운 출력을 메인 컨텍스트에서 격리하는 장치.
+- 박제 시나리오 우선, 없으면 확인 포인트로 즉석 설계 후 `📌 박제 후보`
+- 스펙·recipe에 없는 조작 금지, 사용자 인스턴스·실데이터는 스펙 명시분만 바꾸고 원복 기록
+- 소스 수정·소스 Read·git 금지(Edit 도구 없음), Write는 리포트 경로만
+- 속도 규약: 서술 턴 금지 · 독립 호출 병렬 · 스크린샷 되읽기 최대 2장 · 포인트당 도구 15회 상한 · 2~3회 막히면 `⛔ BLOCKED + 질문`
+- 재현 불가(음성·하드웨어·1초 미만 타이밍)는 시도 없이 `⛔ 미확인(도구 제약)`
 
 ---
 
@@ -268,7 +296,7 @@ git fetch origin && git checkout -t origin/main
 git -C <workspace>/<project> config user.email   # 개인 이메일
 GH_CONFIG_DIR=<개인 gh 설정 경로> gh auth status   # 개인 계정
 ```
-워크스페이스 루트에서 Claude 세션을 열면 `/ready`가 스킬 목록에 보이고, `/go`·`/ship`은 슬래시로만 실행된다.
+워크스페이스 루트에서 Claude 세션을 열면 `/ready`가 스킬 목록에 보이고, `/go`·`/qa`·`/ship`은 슬래시로만 실행된다.
 
 ---
 
@@ -280,6 +308,7 @@ GH_CONFIG_DIR=<개인 gh 설정 경로> gh auth status   # 개인 계정
 | git-guard 세션↔작업장 바인딩, PostToolUse 신호 주입 | agent-docs |
 | "spec 없으면 go는 ready만", "멈춤 = 산출물 경계", "기본안 = 요청안" | agent-docs |
 | intent.md draft→confirmed 게이트 (Success metric 제거 · Non-goals 추가로 변형) | agent-docs |
+| /qa 위임·허가제·리포트 불신 검증·학습 회수, QA 봇 속도 규약 (Playwright 웹 봇 → 레시피 기반 범용 @qabot으로 변형) | agent-docs |
 | description = 트리거 정본, 상시 비용 모델 | agent-docs |
 | "결정은 누구의 것인가", grounds-gate, `N/A — 이유` 기록 | dryforge |
 | exit code 증거 판정, "평가 못 한 체크는 실패" | dryforge |
@@ -289,6 +318,7 @@ GH_CONFIG_DIR=<개인 gh 설정 경로> gh auth status   # 개인 계정
 |---|---|
 | Jira·Slack·배포 감시·위키·지표 에이전트 | 팀·외부 시스템 전제 |
 | 스택별 리뷰어 6종, 반증 게이트 | 1인 볼륨엔 과함 → 내장 `code-review` |
+| QA 환경 표·DB 세팅·로그인 세션·웹 스모크 e2e | 웹 서비스·QA DB 전제 |
 | 보호 브랜치 규칙 | 1인 개발은 main 직접 커밋이 정상 |
 | 투명성 헤더, 버전 4곳 동기화 | 비용 > 가치 |
 | dryforge의 고정 `docs/` 7종, worktree 8병렬 웨이브 | 소규모 프로젝트·네이티브 빌드 비용 |
