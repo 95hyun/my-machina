@@ -2,6 +2,7 @@
 slug: <slug>
 project: <project>
 status: ready   # ready → implemented → shipped
+intent: —       # 프로젝트급이면 intent.md 경로
 created: <YYYY-MM-DD>
 ---
 

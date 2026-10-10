@@ -24,7 +24,7 @@ disable-model-invocation: true
 
 ## 3. 보관
 - spec `status: shipped`, 커밋 해시를 `## 결과`에 추가.
-- `.specs/<slug>/` → `.specs/_archive/<YYYY-MM-DD>-<slug>/` 이동(날짜는 `date +%F` 실출력).
+- `.specs/<slug>/` → `.specs/_archive/<YYYY-MM-DD>-<slug>/` 이동(날짜는 `date +%F` 실출력). 기능 intent는 같이 이동, 프로젝트 전체 `.specs/intent.md`는 그대로 둔다.
 - `.specs/findings.md`에 이번 작업 중 쌓인 항목이 있으면 한 줄로 상기시킨다.
 
 ## DO NOT

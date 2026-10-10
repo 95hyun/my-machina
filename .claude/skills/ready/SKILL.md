@@ -1,12 +1,12 @@
 ---
 name: ready
-description: '바로 구현하지 않고 검토→요구사항 재진술→영향 범위 좌표→결정 지점 정리→spec.md 박제 후 멈춘다. 질문이 남으면 spec 없이 질문만. Keywords: ready, /ready, 검토부터, 바로 시작하지 말고, 작업 준비, 설계 먼저, 스펙 잡아줘'
+description: '바로 구현하지 않고 검토→요구사항 재진술→영향 범위 좌표→결정 지점 정리→spec.md 박제 후 멈춘다. 새 프로젝트·제품 재량 큰 기능은 intent.md(왜·무엇이 달라지나) draft 먼저. 질문이 남으면 spec 없이 질문만. Keywords: ready, /ready, 검토부터, 바로 시작하지 말고, 작업 준비, 설계 먼저, 스펙 잡아줘, 기획부터, 새 프로젝트, intent'
 argument-hint: '[project] <요청 요약>'
 ---
 
 # Ready — 검토 후 spec 박제, 착수 전 정지
 
-작업 루프 1단계(ready → go → ship). 산출물은 `<project>/.specs/<slug>/spec.md` 하나이며 go·ship이 읽는다. 양식은 같은 폴더의 `spec-template.md`.
+작업 루프 1단계(ready → go → ship). 산출물은 `<project>/.specs/<slug>/spec.md`(+ 프로젝트급이면 `intent.md`)이며 go·ship이 읽는다. 양식은 같은 폴더의 `spec-template.md`·`intent-template.md`.
 
 ## 워크플로우
 
@@ -14,6 +14,11 @@ argument-hint: '[project] <요청 요약>'
    - 처음이면 `.specs/`를 repo 로컬 제외에 등록: `grep -qx '.specs/' <repo>/.git/info/exclude || echo '.specs/' >> <repo>/.git/info/exclude`
 2. **영향 범위 탐색**: 직접 grep/Read. 폭이 크면 `Explore`(`model: "sonnet"`). 결과는 `파일:라인`. 프로젝트 CLAUDE.md·README·auto-memory의 해당 프로젝트 항목을 먼저 본다.
 3. **요청안 평가**: 요청한 to-be를 먼저 평가(가능/리스크/비용). 더 나은 안이 있으면 **추가로** 3줄 제안(무엇이 다른가·왜 낫나·비용 차이). 기본 진행안은 항상 요청안이다.
+3.5. **intent 판정**: "무엇을 만들지"가 아직 굳지 않은 작업이면 spec보다 intent.md를 먼저 쓴다.
+   - 대상 = 새 프로젝트 시작, 또는 여러 세션에 걸치고 제품 재량이 큰 기능. 면제 = 버그 수정·동작이 명확한 단건 변경.
+   - 위치 = 기능 단위는 `.specs/<slug>/intent.md`, 프로젝트 전체 방향은 `.specs/intent.md`(여러 spec이 공유). 이미 있으면 읽고 이번 요청이 Proposed outcome·Non-goals 안인지 확인 — 벗어나면 스코프 이탈로 사용자에게 알린다.
+   - 없으면 `intent-template.md`대로 `status: draft` 작성. Problem·Proposed outcome·Non-goals는 사용자의 말에서 가져오고, 추측으로 채울 칸은 Open questions로 돌린다. Open questions는 6단계 질문 묶음에 함께 넣는다.
+   - confirmed 전이는 go 0단계가 사용자 확인을 받아 수행한다(ready는 draft까지).
 4. **결정 지점 전수**: 구조(어디에·어떤 단위로) / 동작(입력·상태·엣지·실패) / 기술(라이브러리·동시성·성능) / 계약(파일 포맷·IPC·외부 API·설정 스키마) 네 관점으로 결정 지점을 나열하고 각각 분류한다.
    - (a) 코드·관례로 이미 정해짐 → 근거 좌표와 함께 spec에 기록
    - (b) 사용자 결정 필요 → 질문 후보
@@ -22,8 +27,8 @@ argument-hint: '[project] <요청 요약>'
    - 제품·도메인 결정은 사용자의 답을 끌어낸다. 기술 결정은 선택지+추천을 제시한다.
 6. **분기**
    - 질문이 남으면 **spec을 쓰지 않는다**. 선택형은 AskUserQuestion(최대 4문항, 추천은 첫 옵션 "(Recommended)", description에 장단점 1줄) → 답을 받으면 같은 턴에 spec 작성. 자유서술형만 번호 목록으로 반환하고 종료.
-   - 모두 해소되면 `spec-template.md`대로 spec.md를 `status: ready`로 쓴다. 각 작업에 `risk`와 검증 명령(CLAUDE.md 프로젝트 맵 기준)을 단다.
-7. **종료 보고** (6줄 이내): 요구사항 1줄 · 요청안 평가 · 대안(있을 때만) · 리스크 · spec 경로 · "확인 후 `/go`".
+   - 모두 해소되면 `spec-template.md`대로 spec.md를 `status: ready`로 쓴다. 각 작업에 `risk`와 검증 명령(CLAUDE.md 프로젝트 맵 기준)을 달고, intent가 있으면 frontmatter `intent:`에 경로를 적고 확인 포인트를 Proposed outcome에서 끌어온다. 해소된 Open questions는 intent에도 ~~취소선~~+결론으로 반영.
+7. **종료 보고** (6줄 이내): 요구사항 1줄 · 요청안 평가 · 대안(있을 때만) · 리스크 · spec 경로(+intent 경로·draft) · "intent·spec 확인 후 `/go`".
    - 이 정지는 허락 요청이 아니라 턴의 산출물 경계다. 구현은 이 요청의 범위 밖이다.
 
 ## DO NOT

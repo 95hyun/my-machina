@@ -13,6 +13,10 @@ disable-model-invocation: true
 - spec 선택: 인자 > 대화 중인 slug > `*/.specs/*/spec.md` 중 `status: ready` 최신(복수면 AskUserQuestion 1회).
 - spec이 없으면 `ready` 스킬을 로드해 실행하고 **거기서 종료**한다(준비 턴의 산출물은 spec까지).
 - `status: implemented`(수정 재진입)는 그대로 진행, `shipped`면 계속 여부 확인.
+- **intent 게이트**: spec `intent:`가 가리키는 intent.md가 `draft`면 구현하지 않는다.
+  - Open questions가 남았으면 그것부터 묻는다(AskUserQuestion).
+  - 다 해소됐으면 Problem·Proposed outcome·Non-goals를 3~5줄로 요약해 "이대로 확정"을 첫 옵션으로 AskUserQuestion 1회 → 확정이면 `status: confirmed`·`updated:` 갱신(날짜는 `date +%F`), 수정 요청이면 반영 후 다시 확인.
+  - 확정 과정에서 Problem·Proposed outcome이 바뀌어 spec 전제가 흔들리면 spec을 고치지 말고 `/ready` 재실행을 안내하고 종료.
 
 ## 1. 작업장
 - `git -C <repo> status --short`로 시작 상태를 기록한다. 이 세션이 만들지 않은 변경이 있으면 건드리지 말고 사용자에게 알린다.
@@ -20,7 +24,7 @@ disable-model-invocation: true
 
 ## 2. 구현 — spec `## 작업`의 risk로 분기
 - **MECHANICAL / NONE**: 메인이 직접 구현.
-- **RISKY 또는 서로 독립인 작업 2개 이상**: `@coder`에 위임. 스펙 상단에 spec.md 경로(구현 전 Read 강제), 해당 작업 번호, `파일:라인` 좌표, 검증 명령을 넣는다. 파급이 크면 `model: "opus"`.
+- **RISKY 또는 서로 독립인 작업 2개 이상**: `@coder`에 위임. 스펙 상단에 spec.md 경로(+ confirmed intent.md 경로 — 둘 다 구현 전 Read 강제), 해당 작업 번호, `파일:라인` 좌표, 검증 명령을 넣는다. 파급이 크면 `model: "opus"`.
 - spec에 없는 결정 갈림길을 만나면 멈추고 묻는다(AskUserQuestion 1회). 범위 확장 금지 — 범위 밖 발견은 `.specs/findings.md`.
 
 ## 3. 검증 — 증거만 인정
@@ -31,6 +35,7 @@ disable-model-invocation: true
 
 ## 4. 리뷰
 - diff가 30줄을 넘거나 로직 분기·상태·동시성·외부 계약이 바뀌었으면 내장 `code-review` 스킬을 Skill tool로 로드한다. 작성자(메인/coder)의 자기 평가는 리뷰를 대신하지 못한다.
+- intent가 있으면 결과물을 Proposed outcome(빠진 항목)·Non-goals(넘어간 범위)와 대조한다 — 어긋나면 리뷰 지적과 같이 취급.
 - 확정된 지적은 반영 후 3단계 재실행.
 
 ## 5. 종료 보고

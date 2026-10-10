@@ -29,7 +29,7 @@ CLAUDE.md에 쓴 규칙은 지켜질 수도 있고 아닐 수도 있다(회사 �
 명확하고 기계적인 작업은 메인 세션이 직접, 파급이 크거나 병렬 가능한 작업만 @coder에 위임한다. 한두 파일짜리 수정에 ready→go→ship 의식을 강요하지 않는다.
 
 ### 6. 멈춤은 허락 요청이 아니라 산출물 경계
-`/ready`의 산출물은 spec.md까지다. "좋아요" 같은 승인성 말을 착수 지시로 해석하지 않고, 대안을 요청안 대신 슬쩍 기본안으로 바꾸지 않는다(**기본 진행안 = 요청안**).
+`/ready`의 산출물은 intent.md·spec.md까지다. "좋아요" 같은 승인성 말을 착수 지시로 해석하지 않고, 대안을 요청안 대신 슬쩍 기본안으로 바꾸지 않는다(**기본 진행안 = 요청안**).
 
 ### 7. 작게 시작해 실측으로 키운다
 쓰이지 않는 규칙은 비용이다. 하네스 lint, 결함 digest, 프로젝트별 CLAUDE.md는 일부러 넣지 않았다 — 실제로 필요해지면 추가한다.
@@ -62,7 +62,7 @@ flowchart TB
     end
 
     C["@coder<br/>서브에이전트 (sonnet)"]
-    SPEC[("spec.md<br/>repo/.specs/slug/")]
+    SPEC[("intent.md · spec.md<br/>repo/.specs/slug/")]
 
     subgraph HK["hooks (0 토큰 · settings.json 배선)"]
         GG{{"git-guard<br/>PreToolUse · Bash"}}
@@ -92,7 +92,7 @@ flowchart TB
 ```
 
 - **판단은 한 곳에서**: 결정·검증은 메인 세션만 한다. @coder는 스펙을 코드로 옮기고, 갈림길에서는 스스로 정하지 않고 리포트로 되돌려 보낸다.
-- **인수인계는 문서로**: 스킬과 서브에이전트는 대화가 아니라 spec.md를 통해 맥락을 주고받는다. 세션이 바뀌어도 이어진다.
+- **인수인계는 문서로**: 스킬과 서브에이전트는 대화가 아니라 문서로 맥락을 주고받는다 — intent.md는 *왜·무엇*, spec.md는 *어떻게*. 세션이 바뀌어도 이어진다.
 - **강제는 hook으로**: git-guard는 메인이든 @coder든 모든 Bash 호출 앞에서 판정한다. 프롬프트 준수에 기대지 않는다.
 - **환기는 신호로**: review-suggest는 막지 않고 Claude 컨텍스트에 힌트만 넣는다. 사용자 화면에는 아무것도 뜨지 않는다.
 
@@ -102,8 +102,12 @@ flowchart TB
 flowchart LR
     R["/ready<br/>검토 · 결정 지점 정리"] -->|질문 남음| Q["질문만 반환<br/>(spec 없음)"]
     Q -->|답변| R
+    R -->|프로젝트급| N[("intent.md<br/>status: draft")]
     R -->|모두 해소| S[("spec.md<br/>status: ready")]
+    N -.-> S
     S --> G["/go<br/>구현 · 검증"]
+    N -->|"/go가 사용자 확인"| NC[("intent.md<br/>confirmed")]
+    NC -. 착수 허가 .-> G
     G -->|MECHANICAL| D[메인 직접]
     G -->|RISKY · 병렬| C["@coder"]
     D --> V{"exit code<br/>증거 판정"}
@@ -122,7 +126,8 @@ flowchart LR
 | skill / agent description | 매 세션 | 트리거 매칭의 **유일한 정본** (CLAUDE.md에 키워드 표를 두지 않는다) |
 | skill 본문 | 호출 시 | 절차 상세 |
 | hook | 0 토큰 | 결정론적 강제 · 신호 주입 |
-| spec.md | 작업 단위 | 세션·에이전트 간 인수인계 |
+| intent.md | 프로젝트급 작업 | 왜 하고 무엇이 달라지나 — 범위의 기준선 |
+| spec.md | 작업 단위 | 어떻게 할지 — 세션·에이전트 간 인수인계 |
 | auto-memory | 세션 간 | 프로젝트 사실·사용자 선호 |
 
 ### 파일 구성
@@ -146,32 +151,47 @@ flowchart LR
 Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리**에서만 읽는다. 스킬·에이전트도 시작 위치에서 repo 루트까지만 찾는다.
 → **세션은 항상 워크스페이스 루트에서 시작한다.** 하위 repo에서 시작하면 CLAUDE.md만 적용되고 hook·스킬·에이전트는 빠진다.
 
+### intent.md vs spec.md
+
+| | intent.md | spec.md |
+|---|---|---|
+| 질문 | 왜 하고, 끝나면 무엇이 달라지나 | 어떻게 할 것인가 |
+| 언제 | 새 프로젝트 · 제품 재량 큰 기능만 | 비자명한 작업 전부 |
+| 섹션 | Problem · Proposed outcome · Non-goals · Constraints · Open questions | 요구사항 · 전제 · 결정 표 · 작업(risk) · 확인 포인트 · 결과 |
+| 상태 | draft → confirmed (사용자 확인) | ready → implemented → shipped |
+| 위치 | 기능: `.specs/<slug>/intent.md` · 프로젝트 전체: `.specs/intent.md` | `.specs/<slug>/spec.md` |
+| 역할 | 범위의 기준선 — 확정 후 Problem·Outcome이 바뀌면 스코프 이탈 신호 | 구현·검증·리뷰의 입력 |
+
+회사 하네스의 intent에서 **Success metric(KPI·baseline)을 빼고 Non-goals를 더했다** — 사이드프로젝트엔 지표 인프라가 없고, 대신 혼자 하다 범위가 불어나는 게 진짜 위험이라서.
+
 ---
 
 ## 스킬
 
-### `/ready` — 검토 후 spec 박제, 착수 전 정지
+### `/ready` — 검토 후 intent·spec 박제, 착수 전 정지
 모델 자동 호출 가능("검토부터", "바로 시작하지 말고" 등).
 
 1. **대상 확정** — 프로젝트·slug 결정, `.specs/`를 repo 로컬 제외에 등록
 2. **영향 범위 탐색** — `파일:라인` 좌표로 정리
 3. **요청안 평가** — 대안은 *추가로*만 제안, 기본안은 언제나 요청안
+   - **intent 판정** — "무엇을 만들지"가 아직 굳지 않은 작업(새 프로젝트, 여러 세션에 걸치고 제품 재량이 큰 기능)이면 `intent-template.md`대로 intent.md를 `draft`로 먼저 쓴다. 버그 수정·명확한 단건 변경은 면제
 4. **결정 지점 전수** — 구조 / 동작 / 기술 / 계약 네 관점으로 나열하고 각각 분류
    - 이미 정해짐 → 근거 좌표와 함께 기록
    - 사용자 결정 필요 → 질문 후보
    - 해당 없음 → `N/A — 이유`로 기록 (**조용히 버리지 않는다**)
 5. **grounds-gate** — 질문 후보는 ① 정확한 위치 ② 이미 다뤄지지 않았다는 적극적 근거 ③ 방치 시 결과, **셋을 모두 댈 수 있을 때만** 묻는다
-6. **분기** — 질문이 남으면 spec 없이 질문만, 해소되면 `spec-template.md`대로 박제(각 작업에 `risk`와 검증 명령)
+6. **분기** — 질문이 남으면 spec 없이 질문만, 해소되면 `spec-template.md`대로 박제(각 작업에 `risk`와 검증 명령, intent가 있으면 확인 포인트를 Proposed outcome에서 끌어옴)
 7. **종료 보고 후 정지**
 
 ### `/go` — spec대로 구현·검증, 커밋 전 정지
 `disable-model-invocation` — `/go`로만 실행.
 
 - **게이트**: spec이 없으면 `/ready`만 돌리고 멈춘다
+- **intent 게이트**: 연결된 intent가 `draft`면 구현하지 않는다 — 남은 질문을 묻고, 요약을 보여준 뒤 사용자 확인을 받아 `confirmed`로 바꾼다
 - **작업장**: 기본은 현재 브랜치(main) 직접. 다른 세션과 겹치면 worktree 제안
 - **구현 분기**: spec의 `risk`가 MECHANICAL → 직접 / RISKY·병렬 → @coder (spec 경로·좌표·검증 명령 동봉)
 - **검증**: 확인 포인트 명령의 exit code 캡처, 평가 불가는 `미검증`, 실패 수정 후엔 **전체** 재실행
-- **리뷰**: 30줄 초과 또는 로직·상태·계약 변경 시 내장 `code-review`
+- **리뷰**: 30줄 초과 또는 로직·상태·계약 변경 시 내장 `code-review`. intent가 있으면 Proposed outcome(빠진 것)·Non-goals(넘친 것)와 대조
 - **보고**: spec `status: implemented` + 결과 기록
 
 ### `/ship` — 커밋 → push → 보관
@@ -191,6 +211,7 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 - 스펙과 코드가 어긋나거나 스펙에 없는 갈림길을 만나면 임의로 정하지 않고 즉시 반환
 - 갈림길 확인 탐색은 2~3파일까지, 무관한 항목은 먼저 끝내고 반환(부분 성과 보존)
 - 리포트: 변경(`파일:라인`) · 검증(exit code·원문) · 가정 · 미해결 질문 4줄(발견 사실 / 선택지 / 권고 / 재개 시 할 일)
+- intent가 `draft`면 구현하지 않고 반환, intent와 어긋나는 구현은 조기 반환(intent 수정 금지)
 - 커밋·git 쓰기 금지
 
 ---
@@ -258,6 +279,7 @@ GH_CONFIG_DIR=<개인 gh 설정 경로> gh auth status   # 개인 계정
 | head/coder 위임 규율, 조기 반환 프로토콜 | agent-docs |
 | git-guard 세션↔작업장 바인딩, PostToolUse 신호 주입 | agent-docs |
 | "spec 없으면 go는 ready만", "멈춤 = 산출물 경계", "기본안 = 요청안" | agent-docs |
+| intent.md draft→confirmed 게이트 (Success metric 제거 · Non-goals 추가로 변형) | agent-docs |
 | description = 트리거 정본, 상시 비용 모델 | agent-docs |
 | "결정은 누구의 것인가", grounds-gate, `N/A — 이유` 기록 | dryforge |
 | exit code 증거 판정, "평가 못 한 체크는 실패" | dryforge |
