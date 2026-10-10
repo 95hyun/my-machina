@@ -1,5 +1,5 @@
 #!/bin/bash
-# git-guard (my-dev) — PreToolUse hook (matcher: Bash)
+# git-guard (my-machina) — PreToolUse hook (matcher: Bash)
 # 1인 개발 + 가끔 병렬 세션 전제. 회사 하네스(agent-docs git-guard)에서 보호 브랜치 규칙을 빼고 계정 검사를 더한 축소판.
 #   deny: 커밋 신원≠95hyun · 세션↔작업장 바인딩 위반 · 현재 브랜치와 다른 브랜치 push · 개인 계정 아닌 gh 쓰기
 #   ask : 남의 repo push · force/삭제 push · 다른 세션이 쓰는 작업장에서 checkout/reset/clean/add -A
@@ -23,7 +23,7 @@ deny() { jq -cn --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",pe
 ask()  { jq -cn --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'; exit 0; }
 
 # ── gh: 회사 계정으로 PR·repo·release가 나가는 사고 방지 ──────────────────
-# 전역 gh는 회사 계정이라, my-dev 세션은 settings.json env.GH_CONFIG_DIR(개인 설정)로 분리한다.
+# 전역 gh는 회사 계정이라, 워크스페이스 세션은 settings.json env.GH_CONFIG_DIR(개인 설정)로 분리한다.
 if has '(^|[;&|(][[:space:]]*|[[:space:]])gh[[:space:]]+(pr|repo|release|issue|gist|api|workflow|secret)([[:space:]]|$)'; then
   GH_DIR=$(printf '%s' "$CMD" | grep -oE 'GH_CONFIG_DIR=[^[:space:]]+' | tail -1 | cut -d= -f2-)
   [ -z "$GH_DIR" ] && GH_DIR="$GH_CONFIG_DIR"
@@ -34,7 +34,7 @@ if has '(^|[;&|(][[:space:]]*|[[:space:]])gh[[:space:]]+(pr|repo|release|issue|g
   # hosts.yml의 github.com 블록 최상위 user: = 활성 계정
   GH_USER=$(awk '/^github\.com:/{f=1;next} /^[^[:space:]]/{f=0} f && /^    user:/{print $2; exit}' "$GH_DIR/hosts.yml" 2>/dev/null)
   if [ "$GH_USER" != "$ME_GH" ]; then
-    deny "[git-guard] gh 활성 계정이 '${GH_USER:-없음}'(설정: $GH_DIR) — my-dev는 $ME_GH 전용. 사용자가 직접 '! GH_CONFIG_DIR=$GH_DIR gh auth login'으로 $ME_GH 로그인 후 재시도."
+    deny "[git-guard] gh 활성 계정이 '${GH_USER:-없음}'(설정: $GH_DIR) — 이 워크스페이스는 $ME_GH 전용. 사용자가 직접 '! GH_CONFIG_DIR=$GH_DIR gh auth login'으로 $ME_GH 로그인 후 재시도."
   fi
 fi
 
@@ -68,7 +68,7 @@ BRANCH=$(git -C "$DIR" branch --show-current 2>/dev/null)
 if [ -n "$HAS_COMMIT" ]; then
   EMAIL=$(git -C "$DIR" config user.email 2>/dev/null)
   if [ "$EMAIL" != "$ME_EMAIL" ]; then
-    deny "[git-guard] 커밋 신원이 '$EMAIL' — my-dev는 $ME_EMAIL 전용. ~/.gitconfig includeIf(gitdir:~/my-dev/)와 repo 로컬 user.email 덮어쓰기 여부를 확인(로컬 config로 땜질 금지)."
+    deny "[git-guard] 커밋 신원이 '$EMAIL' — 이 워크스페이스는 $ME_EMAIL 전용. ~/.gitconfig includeIf(gitdir:<workspace>/)와 repo 로컬 user.email 덮어쓰기 여부를 확인(로컬 config로 땜질 금지)."
   fi
 fi
 
@@ -101,7 +101,8 @@ fi
 # ── push ───────────────────────────────────────────────────────────────────
 if [ -n "$HAS_PUSH" ]; then
   PUSH_SEG=$(printf '%s' "$CMD" | grep -oE 'git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+push[^;&|]*' | head -1)
-  ARGS=$(printf '%s' "$PUSH_SEG" | sed -E 's/-C[[:space:]]+[^[:space:]]+//' | tr '[:space:]' '\n' | grep -v '^$' | grep -vE '^(git|push|-.*)$')
+  # 따옴표 제거: 문자열 인자 안의 push(테스트·echo)가 `HEAD"` 같은 refspec으로 오파싱되는 것 방지
+  ARGS=$(printf '%s' "$PUSH_SEG" | tr -d "\"'" | sed -E 's/-C[[:space:]]+[^[:space:]]+//' | tr '[:space:]' '\n' | grep -v '^$' | grep -vE '^(git|push|-.*)$')
   REMOTE=$(printf '%s\n' "$ARGS" | head -1)
   if [ -n "$REMOTE" ] && git -C "$DIR" remote | grep -qx "$REMOTE"; then
     REFSPEC=$(printf '%s\n' "$ARGS" | sed -n 2p)

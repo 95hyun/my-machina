@@ -1,9 +1,9 @@
-# my-machina — my-dev 개인 사이드프로젝트 하네스
+# my-machina — 1인 개발 워크스페이스 하네스
 
 > Deus ex machina. repo: `95hyun/my-machina`(private)
 
-1인 개발. 하위 디렉토리는 각자 독립 git repo, 이 파일과 `.claude/`는 my-dev 루트 repo가 관리한다.
-**세션은 `~/my-dev` 루트에서 시작한다** — 하위 repo에서 시작하면 이 파일만 로드되고 `.claude/`의 hook·env·스킬·에이전트는 빠진다.
+1인 개발. 이 repo를 clone한 디렉토리 = 워크스페이스 루트. 하위 디렉토리는 각자 독립 git repo이고, 이 파일과 `.claude/`만 이 repo가 관리한다.
+**세션은 워크스페이스 루트에서 시작한다** — 하위 repo에서 시작하면 이 파일만 로드되고 `.claude/`의 hook·env·스킬·에이전트는 빠진다.
 
 ## 원칙
 - 사용자 명시 지시가 최우선. 요청된 변경만 한다(무관한 정리·리팩터링 금지).
@@ -20,7 +20,7 @@
 - 범위 밖에서 발견한 문제는 고치지 말고 `<project>/.specs/findings.md`에 한 줄로 남긴다.
 
 ## git·계정
-- my-dev 계정 = **95hyun <kingmandoo95@gmail.com>**. `~/.gitconfig`의 `includeIf "gitdir:~/my-dev/"`가 커밋 신원과 개인 SSH 키를 자동 적용한다 — repo 로컬 `user.*`·`core.sshCommand` 덮어쓰기 금지. `gh`는 settings.json `env.GH_CONFIG_DIR`로 개인 계정 설정을 쓴다.
+- 워크스페이스 계정 = **95hyun <kingmandoo95@gmail.com>**. `~/.gitconfig`의 `includeIf "gitdir:<workspace>/"`(현재 머신: `~/my-dev/`)가 커밋 신원과 개인 SSH 키를 자동 적용한다 — repo 로컬 `user.*`·`core.sshCommand` 덮어쓰기 금지. `gh`는 settings.json `env.GH_CONFIG_DIR`로 개인 계정 설정을 쓴다.
 - 1인 개발이라 main 직접 커밋이 기본. 커밋·push는 요청 시에만, add는 파일 명시.
 - 남의 repo: `logic-pro-mcp`(origin=MongLong0214 upstream), `PalworldModManager`(origin=h-taek) — push 금지, 기여는 사용자 결정.
 - `git-guard` hook이 신원 불일치·세션 작업장 혼선·남의 repo push·회사 계정 gh를 막는다. deny 시 우회 금지, 사유를 보고한다.

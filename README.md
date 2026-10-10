@@ -3,7 +3,7 @@
 > *Deus ex machina* — 무대 위 기계 장치(machina)에서 내려와 막힌 이야기를 푸는 신.
 > 단, my-machina는 결말을 마음대로 바꾸지 않는다. **결정은 사용자의 것이다.**
 
-`~/my-dev` 개인 사이드프로젝트(1인 개발)를 위한 Claude Code 하네스.
+1인 개발용 Claude Code 하네스. **이 repo를 clone한 디렉토리가 곧 워크스페이스 루트**가 되고, 그 아래에 개인 프로젝트 repo들을 둔다.
 회사 하네스 agent-docs(my-ringle-orchestrator-v2)의 위임·가드 뼈대와 [dryforge](https://github.com/prekuter/dryforge)의 질문 설계·증거 판정을 결합하고, 팀·외부 시스템 전제는 걷어냈다.
 
 ---
@@ -38,26 +38,80 @@ CLAUDE.md에 쓴 규칙은 지켜질 수도 있고 아닐 수도 있다(회사 �
 
 ## 아키텍처
 
+### 런타임 구조
+
+세션 하나 안에서 각 구성요소가 언제 끼어들고 무엇을 주고받는지.
+
+```mermaid
+flowchart TB
+    U(("사용자"))
+
+    subgraph CTX["상시 컨텍스트 (매 세션 로드)"]
+        CM["CLAUDE.md<br/>원칙 · 위임 규율 · 계정 규칙"]
+        DS["description<br/>ready · coder<br/>(트리거 정본)"]
+    end
+
+    subgraph HEAD["메인 세션 = head (결정 · 검증)"]
+        M["판단 · spec 작성 ·<br/>검증 · 보고"]
+    end
+
+    subgraph SK["스킬 본문 (호출 시 로드)"]
+        R["/ready"]
+        G["/go"]
+        S["/ship"]
+    end
+
+    C["@coder<br/>서브에이전트 (sonnet)"]
+    SPEC[("spec.md<br/>repo/.specs/slug/")]
+
+    subgraph HK["hooks (0 토큰 · settings.json 배선)"]
+        GG{{"git-guard<br/>PreToolUse · Bash"}}
+        RS{{"review-suggest<br/>PostToolUse · Edit/Write"}}
+    end
+
+    T["도구 실행<br/>Bash · Edit · Write"]
+    REPO[("워크스페이스 하위 repo들")]
+
+    U -- "요청 · /ready /go /ship" --> M
+    CM -. 규칙 .-> M
+    DS -. 매칭 .-> M
+    M -- "Skill tool" --> SK
+    R -- 작성 --> SPEC
+    G -- 읽기 · 결과 기록 --> SPEC
+    S -- "status · 보관" --> SPEC
+    M -- "RISKY · 병렬 작업 위임" --> C
+    C -- "구현 전 Read" --> SPEC
+    C -- "리포트 (파일:라인 · exit code · 질문)" --> M
+    M --> T
+    C --> T
+    T -- "실행 전" --> GG
+    GG -- "deny / ask / 통과" --> T
+    T --> REPO
+    T -- "수정 후" --> RS
+    RS -- "[review-hint] 주입" --> M
 ```
-~/my-dev/                       ← my-machina repo (화이트리스트 .gitignore: 하네스 파일만 추적)
-├── CLAUDE.md                   상시 규칙: 원칙 · 위임 규율 · git/계정 · 프로젝트 검증 맵
-├── README.md                   이 문서
-├── .claude/
-│   ├── settings.json           hook 배선 + env(GH_CONFIG_DIR)
-│   ├── skills/
-│   │   ├── ready/              검토 → spec 박제 → 정지   (+ spec-template.md)
-│   │   ├── go/                 spec대로 구현·검증 → 커밋 전 정지
-│   │   └── ship/               신원 확인 → 커밋 → push → 보관
-│   ├── agents/coder.md         스펙 기반 구현 전담 서브에이전트
-│   └── hooks/
-│       ├── git-guard.sh        PreToolUse(Bash): 계정·작업장·push 사고 차단
-│       └── review-suggest.sh   PostToolUse(Edit|Write): 리뷰 힌트 주입
-│
-├── claude-pets/                ┐
-├── jarvis/                     │ 각자 독립 git repo (my-machina가 추적하지 않음)
-├── logic-pro-mcp/              │ 작업 문서는 <project>/.specs/ — 각 repo .git/info/exclude로 제외
-├── PalworldModManager/         │
-└── cc-monitor/                 ┘
+
+- **판단은 한 곳에서**: 결정·검증은 메인 세션만 한다. @coder는 스펙을 코드로 옮기고, 갈림길에서는 스스로 정하지 않고 리포트로 되돌려 보낸다.
+- **인수인계는 문서로**: 스킬과 서브에이전트는 대화가 아니라 spec.md를 통해 맥락을 주고받는다. 세션이 바뀌어도 이어진다.
+- **강제는 hook으로**: git-guard는 메인이든 @coder든 모든 Bash 호출 앞에서 판정한다. 프롬프트 준수에 기대지 않는다.
+- **환기는 신호로**: review-suggest는 막지 않고 Claude 컨텍스트에 힌트만 넣는다. 사용자 화면에는 아무것도 뜨지 않는다.
+
+### 작업 흐름
+
+```mermaid
+flowchart LR
+    R["/ready<br/>검토 · 결정 지점 정리"] -->|질문 남음| Q["질문만 반환<br/>(spec 없음)"]
+    Q -->|답변| R
+    R -->|모두 해소| S[("spec.md<br/>status: ready")]
+    S --> G["/go<br/>구현 · 검증"]
+    G -->|MECHANICAL| D[메인 직접]
+    G -->|RISKY · 병렬| C["@coder"]
+    D --> V{"exit code<br/>증거 판정"}
+    C --> V
+    V -->|실패| G
+    V -->|통과 + 리뷰| I[("spec.md<br/>status: implemented")]
+    I --> SH["/ship<br/>커밋 · push"]
+    SH --> A[(".specs/_archive/")]
 ```
 
 ### 레이어별 역할과 비용
@@ -71,27 +125,26 @@ CLAUDE.md에 쓴 규칙은 지켜질 수도 있고 아닐 수도 있다(회사 �
 | spec.md | 작업 단위 | 세션·에이전트 간 인수인계 |
 | auto-memory | 세션 간 | 프로젝트 사실·사용자 선호 |
 
-### 작업 흐름
+### 파일 구성
 
-```mermaid
-flowchart LR
-    R["/ready<br/>검토·결정 지점 정리"] -->|질문 남음| Q["질문만 반환<br/>(spec 없음)"]
-    Q -->|답변| R
-    R -->|모두 해소| S[("spec.md<br/>status: ready")]
-    S --> G["/go<br/>구현·검증"]
-    G -->|MECHANICAL| D[메인 직접]
-    G -->|RISKY · 병렬| C["@coder"]
-    D --> V{"exit code<br/>증거 판정"}
-    C --> V
-    V -->|실패| G
-    V -->|통과 + 리뷰| I[("spec.md<br/>status: implemented")]
-    I --> SH["/ship<br/>커밋·push"]
-    SH --> A[(".specs/_archive/")]
+```
+<workspace>/                    ← 이 repo를 clone한 위치 = 워크스페이스 루트
+├── CLAUDE.md
+├── README.md
+├── .gitignore                  화이트리스트: 하네스 파일만 추적
+└── .claude/
+    ├── settings.json           hook 배선 + env
+    ├── skills/{ready,go,ship}/
+    ├── agents/coder.md
+    └── hooks/{git-guard,review-suggest}.sh
+
+<workspace>/<project>/          각자 독립 git repo — 이 repo는 추적하지 않는다
+<workspace>/<project>/.specs/   작업 문서 — 각 repo의 .git/info/exclude로 제외
 ```
 
 ### 세션 시작 위치 (중요)
 Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리**에서만 읽는다. 스킬·에이전트도 시작 위치에서 repo 루트까지만 찾는다.
-→ **세션은 항상 `~/my-dev` 루트에서 시작한다.** 하위 repo에서 시작하면 CLAUDE.md만 적용되고 hook·스킬·에이전트는 빠진다.
+→ **세션은 항상 워크스페이스 루트에서 시작한다.** 하위 repo에서 시작하면 CLAUDE.md만 적용되고 hook·스킬·에이전트는 빠진다.
 
 ---
 
@@ -124,9 +177,9 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 ### `/ship` — 커밋 → push → 보관
 `disable-model-invocation` — `/ship`으로만 실행.
 
-- **프리플라이트**: 커밋 신원이 95hyun인지, staged 목록에 남의 변경이 섞이지 않았는지
+- **프리플라이트**: 커밋 신원이 개인 계정인지, staged 목록에 남의 변경이 섞이지 않았는지
 - **커밋**: 그 repo의 메시지 스타일을 따르고 사용자 컨펌 후 커밋
-- **push**: origin이 95hyun 소유일 때만 `git push origin HEAD` (남의 repo는 사용자 결정)
+- **push**: origin이 내 계정 소유일 때만 `git push origin HEAD` (남의 repo는 사용자 결정)
 - **보관**: spec `status: shipped` → `.specs/_archive/<날짜>-<slug>/`
 
 ---
@@ -148,11 +201,11 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 
 | 판정 | 조건 |
 |---|---|
-| **deny** | 커밋 신원 ≠ `kingmandoo95@gmail.com` |
+| **deny** | 커밋 신원 ≠ 개인 이메일(`ME_EMAIL`) |
 | **deny** | 세션이 바인딩된 작업장과 같은 repo의 다른 worktree에서 git 쓰기 |
 | **deny** | 현재 브랜치와 다른 브랜치를 push |
-| **deny** | `gh pr/repo/release/…` 실행 시 활성 gh 계정 ≠ 95hyun |
-| ask | push 대상 origin이 95hyun 소유가 아님 (logic-pro-mcp, PalworldModManager 등) |
+| **deny** | `gh pr/repo/release/…` 실행 시 활성 gh 계정 ≠ 개인 계정(`ME_GH`) |
+| ask | push 대상 origin이 내 계정 소유가 아님 (fork·외부 프로젝트) |
 | ask | force-push · 원격 브랜치 삭제 |
 | ask | 다른 세션이 쓰는 작업장에서 checkout / reset --hard / clean / add -A |
 
@@ -165,16 +218,36 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 
 ---
 
-## 계정 분리
+## 설치·설정
 
-my-dev는 개인 계정 **95hyun**, 회사 디렉토리(`~/ringle-devel`)는 회사 계정을 쓴다.
+### 1. 워크스페이스 루트에 clone
+```bash
+# 빈 디렉토리라면
+git clone git@github.com:95hyun/my-machina.git <workspace>
 
-| 항목 | 메커니즘 | 범위 |
+# 이미 프로젝트 repo들이 있는 디렉토리라면 (화이트리스트 .gitignore라 하위 repo와 충돌 없음)
+cd <workspace>
+git init && git remote add origin git@github.com:95hyun/my-machina.git
+git fetch origin && git checkout -t origin/main
+```
+
+### 2. 계정 분리 (회사 계정과 섞이지 않게)
+워크스페이스 안에서는 개인 계정, 밖(회사 디렉토리 등)은 기존 계정을 그대로 쓴다.
+
+| 항목 | 설정 | 적용 범위 |
 |---|---|---|
-| 커밋 신원 | `~/.gitconfig` → `[includeIf "gitdir:~/my-dev/"]` → `~/.gitconfig-95hyun` | `~/my-dev` 아래 모든 repo (터미널 포함) |
-| push SSH 키 | `~/.gitconfig-95hyun`의 `core.sshCommand` (회사 `~/.ssh/config` 차단) | 동일 |
-| gh CLI | `settings.json` → `env.GH_CONFIG_DIR=/Users/hyun/.config/gh-95hyun` | `~/my-dev`에서 시작한 Claude 세션 |
-| 강제 | `git-guard.sh`가 신원·gh 계정 불일치를 deny | 동일 |
+| 커밋 신원 · SSH 키 | `~/.gitconfig`에 `[includeIf "gitdir:<workspace>/"]` → 개인 `user.*`·`core.sshCommand`를 담은 별도 파일 | 워크스페이스 아래 모든 repo (터미널 포함) |
+| gh CLI | `GH_CONFIG_DIR=<개인 gh 설정 경로> gh auth login` 후 `settings.json`의 `env.GH_CONFIG_DIR`에 같은 경로 | 워크스페이스 루트에서 시작한 Claude 세션 |
+| 강제 | `git-guard.sh` 상단의 `ME_EMAIL`·`ME_GH` | 동일 |
+
+> `settings.json`의 `env` 값은 셸이 해석하지 않으므로 `~` 없이 **절대경로**로 쓴다.
+
+### 3. 확인
+```bash
+git -C <workspace>/<project> config user.email   # 개인 이메일
+GH_CONFIG_DIR=<개인 gh 설정 경로> gh auth status   # 개인 계정
+```
+워크스페이스 루트에서 Claude 세션을 열면 `/ready`가 스킬 목록에 보이고, `/go`·`/ship`은 슬래시로만 실행된다.
 
 ---
 
@@ -196,7 +269,7 @@ my-dev는 개인 계정 **95hyun**, 회사 디렉토리(`~/ringle-devel`)는 회
 | 스택별 리뷰어 6종, 반증 게이트 | 1인 볼륨엔 과함 → 내장 `code-review` |
 | 보호 브랜치 규칙 | 1인 개발은 main 직접 커밋이 정상 |
 | 투명성 헤더, 버전 4곳 동기화 | 비용 > 가치 |
-| dryforge의 고정 `docs/` 7종, worktree 8병렬 웨이브 | 소규모·Swift/Rust 빌드 비용 |
+| dryforge의 고정 `docs/` 7종, worktree 8병렬 웨이브 | 소규모 프로젝트·네이티브 빌드 비용 |
 | dryforge의 "호스트 메모리 금지" | auto-memory를 적극 사용 |
 
 ---
@@ -205,4 +278,4 @@ my-dev는 개인 계정 **95hyun**, 회사 디렉토리(`~/ringle-devel`)는 회
 1. 상시 비용부터 따진다 — CLAUDE.md에 넣을 것인가, 스킬 본문인가, hook인가
 2. hook은 진짜 사고 위험에만, 항상 fail-open(무관한 호출을 깨지 않게)
 3. 스크립트는 `bash -n` 문법 확인 + 가짜 입력으로 시나리오 테스트
-4. 이 repo(`~/my-dev`)에 커밋 — 신원은 includeIf가 자동으로 95hyun
+4. 워크스페이스 루트(이 repo)에 커밋
