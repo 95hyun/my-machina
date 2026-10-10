@@ -152,7 +152,7 @@ flowchart LR
 ├── README.md
 ├── .gitignore                  화이트리스트: 하네스 파일만 추적
 └── .claude/
-    ├── settings.json           hook 배선 + env
+    ├── settings.json           hook 배선 + env + 워크스페이스에서 끄는 전역 플러그인
     ├── skills/{ready,go,qa,ship}/
     ├── agents/{coder,qabot,harco,secuman}.md
     ├── hooks/{git-guard,review-suggest}.sh
@@ -335,7 +335,10 @@ git fetch origin && git checkout -t origin/main
 
 > `settings.json`의 `env` 값은 셸이 해석하지 않으므로 `~` 없이 **절대경로**로 쓴다.
 
-### 3. 확인
+### 3. 쓰지 않는 전역 플러그인 끄기
+전역(`~/.claude/settings.json`)에서 켠 플러그인도 이 워크스페이스 세션에서는 `settings.json`의 `enabledPlugins`로 끌 수 있다. 다른 디렉토리 세션에는 영향이 없다. 현재 `claude-seo`를 끈다(SEO는 회사 하네스에서만 쓴다). 이것만으로 상시 description 약 11.5KB(스킬 26개 + 에이전트 19개)가 빠진다 — machina 전체 상시 비용보다 크다.
+
+### 4. 확인
 ```bash
 git -C <workspace>/<project> config user.email   # 개인 이메일
 GH_CONFIG_DIR=<개인 gh 설정 경로> gh auth status   # 개인 계정

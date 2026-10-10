@@ -2,6 +2,9 @@
   "env": {
     "GH_CONFIG_DIR": "/Users/hyun/.config/gh-95hyun"
   },
+  "enabledPlugins": {
+    "claude-seo@agricidaniel-claude-seo": false
+  },
   "hooks": {
     "PreToolUse": [
       {
