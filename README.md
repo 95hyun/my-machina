@@ -4,7 +4,7 @@
 > 단, my-machina는 결말을 마음대로 바꾸지 않는다. **결정은 사용자의 것이다.**
 
 1인 개발용 Claude Code 하네스. **이 repo를 clone한 디렉토리가 곧 워크스페이스 루트**가 되고, 그 아래에 개인 프로젝트 repo들을 둔다.
-회사 하네스 agent-docs(my-ringle-orchestrator-v2)의 위임·가드 뼈대와 [dryforge](https://github.com/prekuter/dryforge)의 질문 설계·증거 판정을 결합하고, 팀·외부 시스템 전제는 걷어냈다.
+이전에 쓰던 팀 하네스의 위임·가드 뼈대와 [dryforge](https://github.com/prekuter/dryforge)의 질문 설계·증거 판정을 결합하고, 팀·외부 시스템 전제는 걷어냈다.
 
 ---
 
@@ -20,10 +20,10 @@
 "됐다"의 근거는 캡처한 **exit code**와 **실측**(스냅샷·로그·테스트 출력)뿐이다. 평가하지 못한 체크는 통과가 아니라 `미검증 — 사유`. 작성자(메인 세션이든 @coder든)의 자기 평가는 리뷰를 대신하지 못하고, 실행해 봐야 아는 동작은 코드를 쓰지 않은 @qabot이 실측한다.
 
 ### 3. 프로즈는 권고, hook은 강제
-CLAUDE.md에 쓴 규칙은 지켜질 수도 있고 아닐 수도 있다(회사 하네스 실측 준수율 62%). 그래서 **되돌리기 어려운 사고**(엉뚱한 계정으로 커밋·push, 병렬 세션 커밋 섞임)만 hook으로 기계적으로 막고, 나머지는 스킬에 맡긴다.
+CLAUDE.md에 쓴 규칙은 지켜질 수도 있고 아닐 수도 있다(이전 팀 하네스에서 실측한 준수율 62%). 그래서 **되돌리기 어려운 사고**(엉뚱한 계정으로 커밋·push, 병렬 세션 커밋 섞임)만 hook으로 기계적으로 막고, 나머지는 스킬에 맡긴다.
 
 ### 4. 상시 비용은 최소로
-매 세션 컨텍스트에 들어가는 건 CLAUDE.md와 스킬·에이전트 description뿐 — 합계 약 7KB — 하네스 CI가 예산(`budget.json`)으로 관리한다(회사 하네스는 약 9k 토큰). 무거운 절차는 스킬 본문에 두고 호출할 때만 로드한다. 부작용 있는 스킬은 `disable-model-invocation`으로 description조차 상주시키지 않는다.
+매 세션 컨텍스트에 들어가는 건 CLAUDE.md와 스킬·에이전트 description뿐 — 합계 약 7KB — 하네스 CI가 예산(`budget.json`)으로 관리한다(이전 팀 하네스는 약 9k 토큰). 무거운 절차는 스킬 본문에 두고 호출할 때만 로드한다. 부작용 있는 스킬은 `disable-model-invocation`으로 description조차 상주시키지 않는다.
 
 ### 5. 노력은 위험만큼
 명확하고 기계적인 작업은 메인 세션이 직접, 파급이 크거나 병렬 가능한 작업만 @coder에 위임한다. 한두 파일짜리 수정에 ready→go→qa→ship 의식을 강요하지 않고, qa는 실행해 봐야 아는 확인 포인트가 있을 때만 돈다.
@@ -149,15 +149,20 @@ flowchart LR
 ```
 <workspace>/                    ← 이 repo를 clone한 위치 = 워크스페이스 루트
 ├── CLAUDE.md
+├── CLAUDE.local.md             (gitignore) 개인 계정·남의 repo 목록·프로젝트 맵
 ├── README.md
 ├── .gitignore                  화이트리스트: 하네스 파일만 추적
 └── .claude/
-    ├── settings.json           hook 배선 + env + 워크스페이스에서 끄는 전역 플러그인
-    ├── skills/{ready,go,qa,ship}/
+    ├── settings.json           hook 배선 + 워크스페이스에서 끄는 전역 플러그인
+    ├── settings.local.json     (gitignore) 개인 env — MACHINA_EMAIL·MACHINA_GH·GH_CONFIG_DIR
+    ├── skills/{ready,go,qa,ship,doctor}/          개발 루프 + 클론 진단
+    ├── skills/{topic,problem,deepen,mvp,pitch,share}/  해커톤 파이프라인
     ├── agents/{coder,qabot,harco,secuman}.md
+    ├── agents/hk-{ideator,scout,researcher,redteam,reviewer}.md  해커톤 전용(스킬만 호출)
     ├── hooks/{git-guard,review-suggest}.sh
     └── ci/{harness_ci.py,budget.json}   하네스 CI
 .github/workflows/harness-ci.yml        push마다 macOS에서 CI
+hackathon/{RULES.md,bin/,templates/,runs/}  해커톤 규칙·보조 스크립트·양식, runs/는 산출물(gitignore)
 
 <workspace>/<project>/          각자 독립 git repo — 이 repo는 추적하지 않는다
 <workspace>/<project>/.specs/   작업 문서(intent·spec)와 qa/(recipe·scenarios·reports) — 각 repo의 .git/info/exclude로 제외
@@ -178,7 +183,7 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 | 위치 | 기능: `.specs/<slug>/intent.md` · 프로젝트 전체: `.specs/intent.md` | `.specs/<slug>/spec.md` |
 | 역할 | 범위의 기준선 — 확정 후 Problem·Outcome이 바뀌면 스코프 이탈 신호 | 구현·검증·리뷰의 입력 |
 
-회사 하네스의 intent에서 **Success metric(KPI·baseline)을 빼고 Non-goals를 더했다** — 사이드프로젝트엔 지표 인프라가 없고, 대신 혼자 하다 범위가 불어나는 게 진짜 위험이라서.
+이전 팀 하네스의 intent에서 **Success metric(KPI·baseline)을 빼고 Non-goals를 더했다** — 사이드프로젝트엔 지표 인프라가 없고, 대신 혼자 하다 범위가 불어나는 게 진짜 위험이라서.
 
 ---
 
@@ -270,11 +275,11 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 |---|---|
 | 판정 | 조건 | 탈출 |
 |---|---|---|
-| **deny** | 커밋 신원 ≠ 개인 이메일(`ME_EMAIL`) — `-c user.email=`·`GIT_AUTHOR_EMAIL=` 위조, `--git-dir`·서브셸 `cd` 경로 포함 | 없음 |
-| **deny** | `gh pr/repo/release/…` 실행 시 활성 gh 계정 ≠ 개인 계정(`ME_GH`) | 없음 |
+| **deny** | (`MACHINA_EMAIL` 설정 시) 커밋 신원 ≠ 그 이메일 — `-c user.email=`·`GIT_AUTHOR_EMAIL=` 위조, `--git-dir`·서브셸 `cd` 경로 포함 | 없음 |
+| **deny** | (`MACHINA_GH` 설정 시) `gh pr/repo/release/…` 실행 시 활성 gh 계정 ≠ 그 계정 | 없음 |
 | **deny** | 세션이 바인딩된 작업장과 같은 repo의 다른 worktree에서 git 쓰기 | `GIT_GUARD_REBIND=1` |
 | **deny** | 현재 브랜치와 다른 브랜치를 push | `GIT_GUARD_OK=1` |
-| **deny** | push 대상 origin이 내 계정 소유가 아님 (fork·외부 프로젝트) | `GIT_GUARD_OK=1` |
+| **deny** | push 대상 origin이 내 계정(`MACHINA_GH`, 없으면 활성 gh 계정) 소유가 아님 (fork·외부 프로젝트). 둘 다 없으면 생략 | `GIT_GUARD_OK=1` |
 | ask | force · mirror · all push, 원격 브랜치 삭제(`--delete`·`:ref`) | — |
 | ask | 다른 세션이 쓰는 작업장에서 checkout / rebase / reset --hard / clean / restore / stash / branch -D / add -A | — |
 
@@ -316,34 +321,79 @@ python3 .claude/ci/harness_ci.py --base HEAD~1   # + 기준 커밋 대비 변화
 ### 1. 워크스페이스 루트에 clone
 ```bash
 # 빈 디렉토리라면
-git clone git@github.com:95hyun/my-machina.git <workspace>
+git clone <repo-url> <workspace>
 
 # 이미 프로젝트 repo들이 있는 디렉토리라면 (화이트리스트 .gitignore라 하위 repo와 충돌 없음)
 cd <workspace>
-git init && git remote add origin git@github.com:95hyun/my-machina.git
+git init && git remote add origin <repo-url>
 git fetch origin && git checkout -t origin/main
 ```
 
-### 2. 계정 분리 (회사 계정과 섞이지 않게)
-워크스페이스 안에서는 개인 계정, 밖(회사 디렉토리 등)은 기존 계정을 그대로 쓴다.
+### 2. 개인 설정 (선택 — gitignore된 로컬 파일)
+계정을 여러 개 쓴다면(예: 회사·개인) 워크스페이스 안에서만 특정 계정을 강제할 수 있다. 값을 비워 두면 git-guard의 신원·gh 계정 검사만 꺼지고 나머지 가드는 그대로 동작한다.
+
+`.claude/settings.local.json`:
+```json
+{
+  "env": {
+    "MACHINA_EMAIL": "you@example.com",
+    "MACHINA_GH": "your-github-id",
+    "GH_CONFIG_DIR": "<HOME>/.config/gh-personal"
+  }
+}
+```
+> `env` 값은 셸이 해석하지 않으므로 `~`·`<HOME>` 대신 실제 **절대경로**로 쓴다. `GH_CONFIG_DIR`은 `GH_CONFIG_DIR=<경로> gh auth login`으로 만든 별도 gh 설정이다.
 
 | 항목 | 설정 | 적용 범위 |
 |---|---|---|
-| 커밋 신원 · SSH 키 | `~/.gitconfig`에 `[includeIf "gitdir:<workspace>/"]` → 개인 `user.*`·`core.sshCommand`를 담은 별도 파일 | 워크스페이스 아래 모든 repo (터미널 포함) |
-| gh CLI | `GH_CONFIG_DIR=<개인 gh 설정 경로> gh auth login` 후 `settings.json`의 `env.GH_CONFIG_DIR`에 같은 경로 | 워크스페이스 루트에서 시작한 Claude 세션 |
-| 강제 | `git-guard.sh` 상단의 `ME_EMAIL`·`ME_GH` | 동일 |
+| 커밋 신원 · SSH 키 | `~/.gitconfig`에 `[includeIf "gitdir:<workspace>/"]` → `user.*`·`core.sshCommand`를 담은 별도 파일 | 워크스페이스 아래 모든 repo (터미널 포함) |
+| gh CLI | 위 `GH_CONFIG_DIR` | 워크스페이스 루트에서 시작한 Claude 세션 |
+| 강제 | 위 `MACHINA_EMAIL`·`MACHINA_GH` → git-guard | 동일 |
 
-> `settings.json`의 `env` 값은 셸이 해석하지 않으므로 `~` 없이 **절대경로**로 쓴다.
+`CLAUDE.local.md` (개인 프로젝트 맵 — `/ready`·`/go`가 검증 명령을 여기서 찾는다):
+```markdown
+## 계정
+- 남의 repo: `<repo>`(origin=<owner>) — push 금지
+
+## 프로젝트 맵 (검증 명령 = `/go` 완료 증거)
+| 프로젝트 | 스택 | 검증 | 비고 |
+|---|---|---|---|
+| my-app | Swift/SwiftPM | `swift build && swift test` | |
+```
 
 ### 3. 쓰지 않는 전역 플러그인 끄기
-전역(`~/.claude/settings.json`)에서 켠 플러그인도 이 워크스페이스 세션에서는 `settings.json`의 `enabledPlugins`로 끌 수 있다. 다른 디렉토리 세션에는 영향이 없다. 현재 `claude-seo`를 끈다(SEO는 회사 하네스에서만 쓴다). 이것만으로 상시 description 약 11.5KB(스킬 26개 + 에이전트 19개)가 빠진다 — machina 전체 상시 비용보다 크다.
+전역(`~/.claude/settings.json`)에서 켠 플러그인도 이 워크스페이스 세션에서는 `settings.json`의 `enabledPlugins`로 끌 수 있다. 다른 디렉토리 세션에는 영향이 없다. 현재 `claude-seo`를 끈다(이 워크스페이스에선 안 쓴다). 이것만으로 상시 description 약 11.5KB(스킬 26개 + 에이전트 19개)가 빠진다 — machina 전체 상시 비용보다 크다.
 
 ### 4. 확인
 ```bash
-git -C <workspace>/<project> config user.email   # 개인 이메일
-GH_CONFIG_DIR=<개인 gh 설정 경로> gh auth status   # 개인 계정
+git -C <workspace>/<project> config user.email   # MACHINA_EMAIL과 같아야 함
+GH_CONFIG_DIR=<GH_CONFIG_DIR 경로> gh auth status   # MACHINA_GH 계정
 ```
-워크스페이스 루트에서 Claude 세션을 열면 `/ready`가 스킬 목록에 보이고, `/go`·`/qa`·`/ship`은 슬래시로만 실행된다.
+워크스페이스 루트에서 Claude 세션을 열고 `/doctor`로 클론 상태를 진단한다(터미널에선 `bash .claude/skills/doctor/doctor.sh`). ❌ 항목은 함께 출력되는 해결 명령대로 고친다. `/ready`가 스킬 목록에 보이고, `/go`·`/qa`·`/ship`은 슬래시로만 실행된다.
+
+---
+
+## 해커톤 파이프라인
+반나절 해커톤 기획용 스킬 묶음. 사람은 회의로 결정하고, 평가·리서치·검증·준비물은 스킬이 만든다. 개발 루프와 같은 워크스페이스 루트 세션에서 돈다.
+**항상 `/topic`부터 시작한다.** `hackathon/runs/CURRENT`가 이전 run(리허설 등)을 가리키면 `/topic`이 "이어가기/새로 만들기"를 묻는다 — 대회에서는 "새로 만들기".
+
+| 단계 | 명령 | 사람이 할 일 | 산출물(`hackathon/runs/<run>/`) |
+|---|---|---|---|
+| 0 | — | `hackathon/templates/input-card.md` 팀 칸·손 시드 채우기(5분) | — |
+| 1 | `/topic <run이름>` + 주제 6개 붙여넣기 | 직감 투표 → 주제 확정 | `01-topics.md` |
+| 2 | `/problem` | 정찰(근거·경쟁·이기는 틈) 붙은 후보를 점수 없이 2~3개 고르기 | `02-candidates.md` `02-scout-*.md` `02-problems.md` |
+| 3 | `/deepen A3 C1` | 최종 1개 확정 | `03-onepager-*.md` `03-redteam.md` `03-compare.md` |
+| 4 | `/mvp` | 독립 리뷰 반영·컷·담당 확정 → 개발 시작 | `04-mvp.md` `04-review.md` (세션별 핸드오프 블록 포함) |
+| 5 | `/pitch`, `/pitch grill` | 스토리 확정, 모의 질의 | `05-pitch.md` |
+| — | `/share` (단계마다 재실행 가능) | 정본 링크·`final.md`를 Discord에 공유 | `final.md`(정본) `share.md`(원본 묶음) |
+
+- 규칙(게이트 앵커링 방지·수치 출처·팀 선정 기준·45분 하드캡)은 `hackathon/RULES.md` — 각 스킬이 시작할 때 읽는다. 해커톤 세션은 `/model opus`로 시작한다(스킬 frontmatter `model: opus`는 호출 턴만 보장).
+- 단계 사이에 `/clear` 해도 된다. 스킬은 대화가 아니라 `hackathon/runs/CURRENT`의 파일을 읽고, 산출물이 있으면 게이트부터 이어간다(다시 만들려면 "다시").
+- `/mvp` 이후 개발자는 이 워크스페이스에 작업 repo를 만들고, 루트 세션에 핸드오프 블록을 붙여 `/ready`로 시작한다.
+- 진행 시간: `hackathon/runs/<run>/timing.log`. 비용: `/cost`.
+- WebSearch는 허용, WebFetch는 일부러 허용 목록에서 뺐다 — 리서치가 읽는 외부 페이지의 프롬프트 인젝션이 로컬 개인값을 무승인 fetch로 내보내는 경로를 막기 위해서. 리서치 중 fetch 승인 프롬프트가 뜨면 URL을 보고 승인한다.
+- 토큰($500/인): 서브에이전트는 `/problem` hk-ideator 3 + hk-scout 2(sonnet), `/deepen` hk-researcher ≤3(sonnet) + hk-redteam 1(opus), `/mvp` hk-reviewer 1(sonnet). 한 사람만 파이프라인을 돌리고 다른 팀원은 `share.md`를 본다.
+- 플랜 B(네트워크·API 장애): `hackathon/templates/`의 입력 카드·루브릭·원페이저 양식을 손으로 채운다. 순서와 게이트는 같다.
 
 ---
 
@@ -351,15 +401,15 @@ GH_CONFIG_DIR=<개인 gh 설정 경로> gh auth status   # 개인 계정
 
 | 가져온 것 | 출처 |
 |---|---|
-| head/coder 위임 규율, 조기 반환 프로토콜 | agent-docs |
-| git-guard 세션↔작업장 바인딩, PostToolUse 신호 주입 | agent-docs |
-| "spec 없으면 go는 ready만", "멈춤 = 산출물 경계", "기본안 = 요청안" | agent-docs |
-| intent.md draft→confirmed 게이트 (Success metric 제거 · Non-goals 추가로 변형) | agent-docs |
-| /qa 위임·허가제·리포트 불신 검증·학습 회수, QA 봇 속도 규약 (Playwright 웹 봇 → 레시피 기반 범용 @qabot으로 변형) | agent-docs |
-| @harco 하네스 리뷰어 (버전 동기화·디렉토리 정책 등 회사 전용 항목 제거, **성능 CI 신설**로 확장) | agent-docs |
-| 하네스 CI: harness_lint의 기계 점검 + hook 회귀 테스트·상시 컨텍스트/지연 예산 (신규) | agent-docs 확장 |
-| @secuman 보안 감사 (Rails/Next/RN OWASP → 로컬 네이티브 위협 모델로 재작성) | agent-docs |
-| description = 트리거 정본, 상시 비용 모델 | agent-docs |
+| head/coder 위임 규율, 조기 반환 프로토콜 | 이전 팀 하네스 |
+| git-guard 세션↔작업장 바인딩, PostToolUse 신호 주입 | 이전 팀 하네스 |
+| "spec 없으면 go는 ready만", "멈춤 = 산출물 경계", "기본안 = 요청안" | 이전 팀 하네스 |
+| intent.md draft→confirmed 게이트 (Success metric 제거 · Non-goals 추가로 변형) | 이전 팀 하네스 |
+| /qa 위임·허가제·리포트 불신 검증·학습 회수, QA 봇 속도 규약 (Playwright 웹 봇 → 레시피 기반 범용 @qabot으로 변형) | 이전 팀 하네스 |
+| @harco 하네스 리뷰어 (버전 동기화·디렉토리 정책 등 회사 전용 항목 제거, **성능 CI 신설**로 확장) | 이전 팀 하네스 |
+| 하네스 CI: harness_lint의 기계 점검 + hook 회귀 테스트·상시 컨텍스트/지연 예산 (신규) | 이전 팀 하네스 확장 |
+| @secuman 보안 감사 (Rails/Next/RN OWASP → 로컬 네이티브 위협 모델로 재작성) | 이전 팀 하네스 |
+| description = 트리거 정본, 상시 비용 모델 | 이전 팀 하네스 |
 | "결정은 누구의 것인가", grounds-gate, `N/A — 이유` 기록 | dryforge |
 | exit code 증거 판정, "평가 못 한 체크는 실패" | dryforge |
 | 위험도(risk) 기반 직접/위임 분기, `disable-model-invocation` | dryforge |
@@ -367,7 +417,7 @@ GH_CONFIG_DIR=<개인 gh 설정 경로> gh auth status   # 개인 계정
 | 버린 것 | 이유 |
 |---|---|
 | Jira·Slack·배포 감시·위키·지표 에이전트 (wikiman·wikibot·wiki-scout·bigman·datacoach·perfscout·tracko·sentryman) | 팀·외부 시스템 전제 |
-| appbot · rails-schema-explorer · fig · careerbot | iOS 시뮬·Rails·Figma 전제 / 경력 기록은 회사 하네스에서만 |
+| appbot · rails-schema-explorer · fig · careerbot | iOS 시뮬·Rails·Figma 전제 / 경력 기록은 개인 하네스 범위 밖 |
 | 스택별 리뷰어(beco·neco·appco), 반증 게이트 | 1인 볼륨엔 과함 → 내장 `code-review` |
 | QA 환경 표·DB 세팅·로그인 세션·웹 스모크 e2e | 웹 서비스·QA DB 전제 |
 | 보호 브랜치 규칙 | 1인 개발은 main 직접 커밋이 정상 |

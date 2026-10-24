@@ -1,9 +1,17 @@
 {
-  "env": {
-    "GH_CONFIG_DIR": "/Users/hyun/.config/gh-95hyun"
-  },
   "enabledPlugins": {
     "claude-seo@agricidaniel-claude-seo": false
+  },
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Edit(./hackathon/runs/**)",
+      "Bash(./hackathon/bin/newrun:*)",
+      "Bash(./hackathon/bin/mark:*)",
+      "Bash(./hackathon/bin/ideas:*)",
+      "Bash(./hackathon/bin/share:*)",
+      "Bash(ls hackathon/runs/:*)"
+    ]
   },
   "hooks": {
     "PreToolUse": [

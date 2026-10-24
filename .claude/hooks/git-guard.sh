@@ -1,15 +1,13 @@
 #!/bin/bash
 # git-guard (my-machina) — PreToolUse hook (matcher: Bash)
-# 1인 개발 + 가끔 병렬 세션 전제. 회사 하네스(agent-docs git-guard)에서 보호 브랜치 규칙을 빼고 계정 검사를 더한 축소판.
+# 1인 개발 + 가끔 병렬 세션 전제. 이전 팀 하네스의 git-guard에서 보호 브랜치 규칙을 빼고 계정 검사를 더한 축소판.
 #   deny(면제 불가): 커밋 신원≠워크스페이스 계정(-c/env 위조 포함) · 개인 계정 아닌 gh 쓰기
+#     계정 값(MACHINA_EMAIL·MACHINA_GH)은 프로세스 env에서만 읽는다(settings*.json env가 주입한 값). 미설정 시 해당 신원·gh 검사 생략
 #   deny(사용자 승인 시 면제): 세션↔작업장 바인딩 위반(REBIND) · 다른 브랜치 push · 남의 repo push(OK)
 #   ask : force/mirror/삭제 push · 다른 세션이 쓰는 작업장에서 checkout/reset/clean/restore/stash/add -A
 # 탈출 토큰은 명령 맨 앞 env 접두로만 인정한다(메시지·인자 안의 토큰은 무시). 붙이는 건 사용자가 그 명령을 명시 승인한 뒤에만.
 #   GIT_GUARD_REBIND=1 → 현 위치로 재바인딩 / GIT_GUARD_OK=1 → 브랜치 불일치·남의 repo push만 1회 면제
 # 항상 exit 0, 판단 불가 시 무개입 — 무관한 Bash 호출을 깨뜨리지 않는다.
-
-ME_EMAIL="kingmandoo95@gmail.com"
-ME_GH="95hyun"
 
 INPUT=$(cat 2>/dev/null) || exit 0
 [ -z "$INPUT" ] && exit 0
@@ -32,19 +30,29 @@ deny() { jq -cn --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",pe
 ask()  { jq -cn --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'; exit 0; }
 APPROVAL="사용자가 이 명령을 명시 승인한 경우에만"
 
-# ── gh: 회사 계정으로 PR·repo·release가 나가는 사고 방지 (면제 불가) ──────
-# 전역 gh는 회사 계정이라, 워크스페이스 세션은 settings.json env.GH_CONFIG_DIR(개인 설정)로 분리한다.
+# 설정값 K: 프로세스 env만. gh도 env만 보므로 파일을 읽으면 판정과 실제 계정이 어긋난다.
+cfg() { printf '%s' "${!1}"; }
+# gh 설정 디렉토리: [명령 접두 GH_CONFIG_DIR(인자 cmd일 때)] > env > ~/.config/gh
+gh_dir() {
+  local d=
+  [ "$1" = cmd ] && d=$(printf '%s' "$CMD" | grep -oE 'GH_CONFIG_DIR=[^[:space:]]+' | tail -1 | cut -d= -f2- | tr -d "\"'")
+  [ -z "$d" ] && d=$(cfg GH_CONFIG_DIR)
+  [ -z "$d" ] && d="$HOME/.config/gh"
+  printf '%s' "${d/#\~/$HOME}"
+}
+# hosts.yml의 github.com 블록 최상위 user: = 활성 계정
+gh_user() { awk '/^github\.com:/{f=1;next} /^[^[:space:]]/{f=0} f && /^    user:/{print $2; exit}' "$1/hosts.yml" 2>/dev/null; }
+
+# ── gh: 다른 계정으로 PR·repo·release가 나가는 사고 방지 (면제 불가, MACHINA_GH 설정 시) ──
+# 전역 gh가 다른 계정일 수 있어, 워크스페이스 세션은 env GH_CONFIG_DIR(개인 설정)로 분리한다.
 if has '(^|[;&|(][[:space:]]*|[[:space:]])gh[[:space:]]+(pr|repo|release|issue|gist|api|workflow|secret)([[:space:]]|$)'; then
-  GH_DIR=$(printf '%s' "$CMD" | grep -oE 'GH_CONFIG_DIR=[^[:space:]]+' | tail -1 | cut -d= -f2-)
-  [ -z "$GH_DIR" ] && GH_DIR="$GH_CONFIG_DIR"
-  [ -z "$GH_DIR" ] && [ -n "$CLAUDE_PROJECT_DIR" ] && \
-    GH_DIR=$(jq -r '.env.GH_CONFIG_DIR // empty' "$CLAUDE_PROJECT_DIR/.claude/settings.json" 2>/dev/null)
-  [ -z "$GH_DIR" ] && GH_DIR="$HOME/.config/gh"
-  GH_DIR="${GH_DIR/#\~/$HOME}"
-  # hosts.yml의 github.com 블록 최상위 user: = 활성 계정
-  GH_USER=$(awk '/^github\.com:/{f=1;next} /^[^[:space:]]/{f=0} f && /^    user:/{print $2; exit}' "$GH_DIR/hosts.yml" 2>/dev/null)
-  if [ "$GH_USER" != "$ME_GH" ]; then
-    deny "[git-guard] gh 활성 계정이 '${GH_USER:-없음}'(설정: $GH_DIR) — 이 워크스페이스는 $ME_GH 전용(면제 불가). 사용자가 직접 '! GH_CONFIG_DIR=$GH_DIR gh auth login'으로 $ME_GH 로그인 후 재시도."
+  ME_GH=$(cfg MACHINA_GH)
+  if [ -n "$ME_GH" ]; then
+    GH_DIR=$(gh_dir cmd)
+    GH_USER=$(gh_user "$GH_DIR")
+    if [ "$GH_USER" != "$ME_GH" ]; then
+      deny "[git-guard] gh 활성 계정이 '${GH_USER:-없음}'(설정: $GH_DIR) — 이 워크스페이스는 MACHINA_GH 설정값($ME_GH) 전용(면제 불가). 사용자가 직접 '! GH_CONFIG_DIR=$GH_DIR gh auth login'으로 $ME_GH 로그인 후 재시도."
+    fi
   fi
 fi
 
@@ -80,15 +88,16 @@ COMMON=$(git -C "$DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/
 [ -z "$COMMON" ] && COMMON="$TOP/.git"
 BRANCH=$(git -C "$DIR" branch --show-current 2>/dev/null)
 
-# ── 커밋 신원 (면제 불가) ──────────────────────────────────────────────────
-if [ -n "$HAS_COMMIT" ]; then
+# ── 커밋 신원 (면제 불가, MACHINA_EMAIL 설정 시) ──────────────────────────
+ME_EMAIL=; [ -n "$HAS_COMMIT" ] && ME_EMAIL=$(cfg MACHINA_EMAIL)
+if [ -n "$ME_EMAIL" ]; then
   EMAIL=$(git -C "$DIR" config user.email 2>/dev/null)
   # 명령에서 신원을 덮어쓰는 경로(-c user.email=, GIT_AUTHOR/COMMITTER_EMAIL=)도 같은 기준으로 본다
   for O in $(printf '%s' "$CMD" | grep -oE '(user\.email|GIT_(AUTHOR|COMMITTER)_EMAIL)=[^[:space:]]+' | cut -d= -f2- | tr -d "\"'"); do
     [ "$O" != "$ME_EMAIL" ] && EMAIL="$O"
   done
   if [ "$EMAIL" != "$ME_EMAIL" ]; then
-    deny "[git-guard] 커밋 신원이 '$EMAIL' — 이 워크스페이스는 $ME_EMAIL 전용(면제 불가). ~/.gitconfig includeIf(gitdir:<workspace>/)와 repo 로컬 user.email·명령 내 신원 덮어쓰기를 확인(로컬 config로 땜질 금지)."
+    deny "[git-guard] 커밋 신원이 '$EMAIL' — 이 워크스페이스는 MACHINA_EMAIL 설정값($ME_EMAIL) 전용(면제 불가). ~/.gitconfig includeIf(gitdir:<workspace>/)와 repo 로컬 user.email·명령 내 신원 덮어쓰기를 확인(로컬 config로 땜질 금지)."
   fi
 fi
 
@@ -131,8 +140,14 @@ if [ -n "$HAS_PUSH" ]; then
 
   URL=$(git -C "$DIR" remote get-url "$REMOTE" 2>/dev/null)
   OWNER=$(printf '%s' "$URL" | sed -nE 's#.*github\.com[:/]([^/]+)/.*#\1#p')
-  if [ "$OWNER" != "$ME_GH" ] && [ -z "$OK" ]; then
-    deny "[git-guard] push 대상 '$REMOTE'($URL)가 $ME_GH 소유가 아님 — 남의 repo push 금지. 기여가 의도라면 $APPROVAL 명령 맨 앞에 GIT_GUARD_OK=1."
+  if [ -z "$OK" ]; then
+    # 내 계정 = MACHINA_GH, 없으면 gh 활성 계정. 둘 다 없으면 owner 검사만 생략(판단 불가 시 무개입)
+    # 명령 접두 GH_CONFIG_DIR는 무시 — 남의 계정 설정을 접두로 붙여 owner 검사를 우회하지 못하게
+    ME_GH=$(cfg MACHINA_GH); ME_SRC="MACHINA_GH"
+    [ -z "$ME_GH" ] && { ME_GH=$(gh_user "$(gh_dir)"); ME_SRC="gh 활성 계정"; }
+    if [ -n "$ME_GH" ] && [ "$OWNER" != "$ME_GH" ]; then
+      deny "[git-guard] push 대상 '$REMOTE'($URL)가 $ME_GH($ME_SRC) 소유가 아님 — 남의 repo push 금지. 기여가 의도라면 $APPROVAL 명령 맨 앞에 GIT_GUARD_OK=1."
+    fi
   fi
 
   # 원격 삭제(--delete/-d 또는 ':<branch>')는 로컬 브랜치를 올리는 게 아니라 브랜치 불일치 검사 대상이 아니다

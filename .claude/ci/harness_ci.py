@@ -11,7 +11,7 @@ import argparse, glob, json, os, re, shutil, statistics, subprocess, sys, tempfi
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 CI = os.path.join(ROOT, ".claude", "ci")
 BUDGET = json.load(open(os.path.join(CI, "budget.json"), encoding="utf-8"))
-ME_EMAIL, ME_GH = "kingmandoo95@gmail.com", "95hyun"
+ME_EMAIL, ME_GH = "me@example.com", "me-gh"  # 샌드박스 가짜 계정 — 실제 계정에 의존하지 않는다
 
 failures, warnings, report = [], [], []
 
@@ -121,11 +121,22 @@ def lint():
                     fail(f"{rel(p)}: 템플릿에 없는 상태 '{s}' (정의: {' / '.join(sorted(status_vocab))})")
 
     # 워크스페이스 고정값 누수 (clone 위치 = 워크스페이스 루트)
-    for p in skills + agents + hooks:
-        if rel(p) in BUDGET["path_leak_allow"]:
+    hack = [p for p in glob.glob(os.path.join(ROOT, "hackathon/**/*"), recursive=True) if os.path.isfile(p) and "/runs/" not in p]
+    extra = [p for d in (".claude/skills", ".github") for p in glob.glob(os.path.join(ROOT, d, "**/*"), recursive=True)
+             if os.path.isfile(p) and p not in skills and "__pycache__" not in p]
+    for p in skills + agents + hooks + hack + extra + [os.path.join(ROOT, f) for f in ("CLAUDE.md", "README.md", ".claude/settings.json")]:
+        if not os.path.exists(p) or rel(p) in BUDGET["path_leak_allow"]:
             continue
         for m in re.finditer(r"/Users/[\w.-]+|~/my-dev", read(p)):
             fail(f"{rel(p)}: 머신 고정 경로 '{m.group(0)}' — $CLAUDE_PROJECT_DIR·<workspace> 표기 사용")
+
+    # 해커톤 스킬·에이전트·규칙이 가리키는 hackathon/ 경로가 실재해야 한다 (runs/ 산출물·<자리표시자> 제외)
+    for p in skills + agents + [os.path.join(ROOT, "hackathon/RULES.md")]:
+        if not os.path.exists(p):
+            continue
+        for m in set(re.findall(r"hackathon/(?:bin|templates)/[\w.-]+|hackathon/RULES\.md", read(p))):
+            if not os.path.exists(os.path.join(ROOT, m)):
+                fail(f"{rel(p)}: 없는 해커톤 경로 '{m}' 참조")
 
 
 # ── 2. 상시 컨텍스트 비용 ────────────────────────────────────────────────────
@@ -177,8 +188,7 @@ def make_sandbox():
         os.makedirs(d)
         with open(os.path.join(d, "hosts.yml"), "w") as f:
             f.write(f"github.com:\n    users:\n        {user}:\n    git_protocol: ssh\n    user: {user}\n")
-    with open(os.path.join(ws, ".claude/settings.json"), "w") as f:
-        json.dump({"env": {"GH_CONFIG_DIR": gh_me}}, f)
+    # 계정 값은 hook env로 주입(id_env). ws/.claude에는 설정 파일을 두지 않는다 — '미설정' 케이스가 이 ws를 쓴다
 
     def repo(name, remote, email=None):
         p = os.path.join(ws, name)
@@ -200,7 +210,12 @@ def make_sandbox():
     wt = os.path.join(ws, "mine-wt")
     sh(["git", "-C", r["mine"], "worktree", "add", "-q", "-b", "wt", wt], None, env)
     r["mine-wt"] = wt
-    return sb, home, ws, env, r, gh_corp
+    return sb, home, ws, env, r, gh_me, gh_corp
+
+
+def id_env(env, ws, gh_me):
+    """기본 hook env: 계정 값(MACHINA_*·GH_CONFIG_DIR)을 프로세스 env로 주입."""
+    return dict(env, CLAUDE_PROJECT_DIR=ws, MACHINA_EMAIL=ME_EMAIL, MACHINA_GH=ME_GH, GH_CONFIG_DIR=gh_me)
 
 
 def run_hook(hook_path, payload, env):
@@ -218,13 +233,38 @@ def run_hook(hook_path, payload, env):
     return out, ms
 
 
-def hook_tests(sb, home, ws, env, r, gh_corp):
+def hook_tests(sb, home, ws, env, r, gh_me, gh_corp):
     gg = os.path.join(ROOT, ".claude/hooks/git-guard.sh")
     rs = os.path.join(ROOT, ".claude/hooks/review-suggest.sh")
-    henv = dict(env, CLAUDE_PROJECT_DIR=ws)
+    henv = id_env(env, ws, gh_me)
 
-    def g(cmd, cwd, sid="s1"):
-        out, _ = run_hook(gg, {"tool_input": {"command": cmd}, "cwd": cwd, "session_id": sid}, henv)
+    # 계정 값 변형 env — 새 케이스는 별도 session id(u*)로 기존 바인딩과 간섭하지 않는다
+    assert not os.path.exists(os.path.join(home, ".config/gh")), "샌드박스 HOME에 전역 gh 설정이 있으면 '미설정' 케이스가 오염됨"
+    ws_local = os.path.join(sb, "ws-local")  # 설정 파일에만 값이 있는 프로젝트 디렉토리 — hook은 파일을 읽지 않아야 한다
+    os.makedirs(os.path.join(ws_local, ".claude"))
+    with open(os.path.join(ws_local, ".claude/settings.local.json"), "w") as f:
+        json.dump({"permissions": {"allow": []}, "env": {"MACHINA_EMAIL": ME_EMAIL, "MACHINA_GH": ME_GH, "GH_CONFIG_DIR": gh_me}}, f)
+    with open(os.path.join(ws_local, ".claude/settings.json"), "w") as f:
+        json.dump({"env": {"MACHINA_EMAIL": "wrong@example.com", "MACHINA_GH": "wrong-gh"}}, f)
+    gh_someone = os.path.join(sb, "gh-someone")  # push owner 우회 시도용: fork 소유자 계정이 활성인 gh 설정
+    os.makedirs(gh_someone)
+    with open(os.path.join(gh_someone, "hosts.yml"), "w") as f:
+        f.write("github.com:\n    users:\n        someone:\n    git_protocol: ssh\n    user: someone\n")
+    home_g = os.path.join(sb, "home-globalgh")  # 전역 ~/.config/gh 폴백용 HOME
+    os.makedirs(os.path.join(home_g, ".config/gh"))
+    shutil.copy(os.path.join(home, ".gitconfig"), home_g)
+    shutil.copy(os.path.join(gh_me, "hosts.yml"), os.path.join(home_g, ".config/gh"))
+    envs = {
+        "base": henv,
+        "unset": dict(env, CLAUDE_PROJECT_DIR=ws),
+        "local": dict(env, CLAUDE_PROJECT_DIR=ws_local),
+        "ghdir": dict(env, CLAUDE_PROJECT_DIR=ws, GH_CONFIG_DIR=gh_me),
+        "globalgh": dict(env, HOME=home_g, CLAUDE_PROJECT_DIR=ws),
+        "corpdir": dict(henv, GH_CONFIG_DIR=gh_corp),  # env gh 설정이 회사 계정 — 접두로 개인 설정을 지정하는 경우
+    }
+
+    def g(cmd, cwd, sid="s1", ev="base"):
+        out, _ = run_hook(gg, {"tool_input": {"command": cmd}, "cwd": cwd, "session_id": sid}, envs[ev])
         return out.get("permissionDecision", "allow")
 
     # (이름, 명령, cwd, session, 기대) — 순서 의존: 세션은 repo별 첫 git 쓰기 위치에 바인딩된다
@@ -265,10 +305,33 @@ def hook_tests(sb, home, ws, env, r, gh_corp):
         ("gh 회사 설정 강제", f"GH_CONFIG_DIR={gh_corp} gh pr create", ws, "s1", "deny"),
         ("gh 회사 설정 + OK 접두도 불가", f"GIT_GUARD_OK=1 GH_CONFIG_DIR={gh_corp} gh pr create", ws, "s1", "deny"),
         ("gh 읽기(auth status)", "gh auth status", ws, "s1", "allow"),
+        # 계정 값 미설정(env·로컬 파일·전역 gh 모두 없음): 신원·gh·owner 검사 생략, 브랜치 검사는 유지
+        ("미설정: 다른 이메일 repo 커밋", "git commit -m x", r["corp"], "u1", "allow", "unset"),
+        ("미설정: 회사 gh로 pr create", f"GH_CONFIG_DIR={gh_corp} gh pr create", ws, "u1", "allow", "unset"),
+        ("미설정: 남의 repo push(owner 검사 생략)", "git push origin HEAD", r["fork"], "u1", "allow", "unset"),
+        ("미설정: 다른 브랜치 push", "git push origin other", r["mine"], "u1", "deny", "unset"),
+        # env 미주입 + settings*.json에만 값 있음 → 파일은 판정에 영향 없음(신원·gh·owner 검사 생략)
+        ("env 미주입+파일만: 다른 이메일 repo 커밋", "git commit -m x", r["corp"], "u2", "allow", "local"),
+        ("env 미주입+파일만: GIT_AUTHOR_EMAIL 위조", "GIT_AUTHOR_EMAIL=evil@corp.example git commit -m x", r["mine"], "u2", "allow", "local"),
+        ("env 미주입+파일만: 회사 gh로 pr create", f"GH_CONFIG_DIR={gh_corp} gh pr create", ws, "u2", "allow", "local"),
+        ("env 미주입+파일만: 남의 repo push(owner 검사 생략)", "git push origin HEAD", r["fork"], "u2", "allow", "local"),
+        ("env 미주입+파일만: 다른 브랜치 push", "git push origin other", r["mine"], "u2", "deny", "local"),
+        # gh 검사 접두 GH_CONFIG_DIR 따옴표 제거
+        ("gh 접두 GH_CONFIG_DIR 쌍따옴표(개인)", f'GH_CONFIG_DIR="{gh_me}" gh pr create', ws, "s1", "allow", "corpdir"),
+        ("gh 접두 GH_CONFIG_DIR 홑따옴표(개인)", f"GH_CONFIG_DIR='{gh_me}' gh pr create", ws, "s1", "allow", "corpdir"),
+        # MACHINA_GH 미설정 → GH_CONFIG_DIR hosts.yml 활성 계정이 내 계정
+        ("MACHINA_GH 없음+GH_CONFIG_DIR: 남의 repo push", "git push origin HEAD", r["fork"], "u3", "deny", "ghdir"),
+        ("MACHINA_GH 없음+GH_CONFIG_DIR: 내 repo push", "git push origin HEAD", r["mine"], "u3", "allow", "ghdir"),
+        ("MACHINA_GH 없음+GH_CONFIG_DIR: 다른 브랜치 push", "git push origin other", r["mine"], "u3", "deny", "ghdir"),
+        ("MACHINA_GH 없음: 접두 GH_CONFIG_DIR(남의 계정)로 owner 우회 불가", f"GH_CONFIG_DIR={gh_someone} git push origin HEAD", r["fork"], "u3", "deny", "ghdir"),
+        # 전부 미설정이지만 전역 ~/.config/gh가 있으면 그 활성 계정으로 owner 판정
+        ("전역 gh 폴백: 남의 repo push", "git push origin HEAD", r["fork"], "u4", "deny", "globalgh"),
+        ("전역 gh 폴백: 내 repo push", "git push origin HEAD", r["mine"], "u4", "allow", "globalgh"),
+        ("전역 gh 폴백: 접두 GH_CONFIG_DIR(남의 계정)로 owner 우회 불가", f"GH_CONFIG_DIR={gh_someone} git push origin HEAD", r["fork"], "u4", "deny", "globalgh"),
     ]
     rows, bad = [], 0
-    for name, cmd, cwd, sid, exp in cases:
-        got = g(cmd, cwd, sid)
+    for name, cmd, cwd, sid, exp, *ev in cases:
+        got = g(cmd, cwd, sid, *ev)
         ok = got == exp
         bad += not ok
         rows.append(f"| git-guard | {name} | {exp} | {got} | {'✅' if ok else '❌'} |")
@@ -298,6 +361,60 @@ def hook_tests(sb, home, ws, env, r, gh_corp):
     report.append(f"### hook 회귀 테스트 ({len(rows) - bad}/{len(rows)})\n| hook | 케이스 | 기대 | 실제 | |\n|---|---|---|---|---|\n" + "\n".join(rows))
 
 
+def doctor_tests(sb, env, gh_me):
+    """doctor.sh: 문법 + 샌드박스 워크스페이스(이 repo의 .claude 사본 + 최소 hackathon + 하위 repo 1개)에서 exit code."""
+    src = os.path.join(ROOT, ".claude/skills/doctor/doctor.sh")
+    rows, bad = [], 0
+
+    def row(name, exp, got, detail=""):
+        nonlocal bad
+        ok = exp == got
+        bad += not ok
+        rows.append(f"| doctor | {name} | {exp} | {got} | {'✅' if ok else '❌'} |")
+        if not ok:
+            fail(f"doctor 회귀: '{name}' 기대 {exp}, 실제 {got} {detail}".rstrip())
+
+    if not os.path.exists(src):
+        fail("doctor.sh 없음: .claude/skills/doctor/doctor.sh")
+        return
+    r = subprocess.run(["bash", "-n", src], capture_output=True, text=True)
+    row("bash -n", "ok", "ok" if r.returncode == 0 else "error", r.stderr.strip()[:120])
+
+    dws = os.path.join(sb, "doctor-ws")
+    # 개인 파일·작업 임시물은 복사하지 않는다 — 새 clone과 같은 조건
+    shutil.copytree(os.path.join(ROOT, ".claude"), os.path.join(dws, ".claude"),
+                    ignore=shutil.ignore_patterns("settings.local.json", "tmp", "__pycache__"))
+    hk = os.path.join(dws, "hackathon")
+    for d in ("bin", "templates", "runs"):
+        os.makedirs(os.path.join(hk, d))
+    for b in ("newrun", "mark", "ideas", "share"):
+        bp = os.path.join(hk, "bin", b)
+        open(bp, "w").write("#!/bin/bash\n")
+        os.chmod(bp, 0o755)
+    for t in ("input-card", "onepager", "rubric", "final"):
+        open(os.path.join(hk, "templates", f"{t}.md"), "w").write("x\n")
+    open(os.path.join(hk, "RULES.md"), "w").write("x\n")
+    sh(["git", "init", "-q", "-b", "main"], dws, env)
+    sub = os.path.join(dws, "app")
+    os.makedirs(sub)
+    sh(["git", "init", "-q", "-b", "main"], sub, env)
+
+    denv = dict(env, CLAUDE_PROJECT_DIR=dws, MACHINA_EMAIL=ME_EMAIL, MACHINA_GH=ME_GH, GH_CONFIG_DIR=gh_me)
+    dsh = os.path.join(dws, ".claude/skills/doctor/doctor.sh")
+
+    def run():
+        p = subprocess.run(["bash", dsh], env=denv, capture_output=True, text=True, timeout=30)
+        return p.returncode, p.stdout
+
+    code, out = run()
+    row("정상 워크스페이스(MACHINA_* env) → exit 0", 0, code, out.strip()[-300:])
+    sh(["git", "config", "user.email", "other@company.example"], sub, env)
+    code, out = run()
+    got = code if "❌ 계정(커밋 신원)" in out else f"{code}(신원 ❌ 없음)"
+    row("하위 repo user.email ≠ MACHINA_EMAIL → exit 1 + 신원 ❌", 1, got, out.strip()[-300:])
+    report.append(f"### doctor ({len(rows) - bad}/{len(rows)})\n| 대상 | 케이스 | 기대 | 실제 | |\n|---|---|---|---|---|\n" + "\n".join(rows))
+
+
 def latency(hook_path, payload, env, n=15):
     """payload가 함수면 회차별로 새 입력을 만든다(dedup 경로를 피해 주입 경로를 재기 위해)."""
     mk = payload if callable(payload) else (lambda i: payload)
@@ -305,8 +422,8 @@ def latency(hook_path, payload, env, n=15):
     return statistics.median(run_hook(hook_path, mk(i), env)[1] for i in range(n))
 
 
-def latency_check(ws, env, r, base_ref):
-    henv = dict(env, CLAUDE_PROJECT_DIR=ws)
+def latency_check(ws, env, r, gh_me, base_ref):
+    henv = id_env(env, ws, gh_me)  # 기본 케이스와 같은 조건(계정 값 env 주입 → jq 폴백 0회)
     scen = {
         "git-guard.sh:noop": ("git-guard.sh", {"tool_input": {"command": "ls -la"}, "cwd": ws, "session_id": "lat"}),
         "git-guard.sh:git": ("git-guard.sh", {"tool_input": {"command": "git commit -m x"}, "cwd": r["mine"], "session_id": "lat"}),
@@ -350,10 +467,11 @@ def main():
             fail(f"필수 도구 없음: {tool}")
     lint()
     budget_check(base)
-    sb, home, ws, env, r, gh_corp = make_sandbox()
+    sb, home, ws, env, r, gh_me, gh_corp = make_sandbox()
     try:
-        hook_tests(sb, home, ws, env, r, gh_corp)
-        latency_check(ws, env, r, base)
+        hook_tests(sb, home, ws, env, r, gh_me, gh_corp)
+        latency_check(ws, env, r, gh_me, base)
+        doctor_tests(sb, env, gh_me)
     finally:
         shutil.rmtree(sb, ignore_errors=True)
 

@@ -11,7 +11,7 @@ disable-model-invocation: true
 
 ## 0. 프리플라이트
 - spec이 있으면 status가 `qa-passed`, 또는 `[run]` 포인트가 없는 `implemented`인지 확인. `[run]` 포인트가 미검증인데 ship하려 하면 "QA 미실시 N건"을 경고하고 계속 여부를 묻는다. 루프 밖 호출이면 spec 관련 단계만 생략.
-- 신원: `git -C <repo> config user.email`이 CLAUDE.md의 워크스페이스 계정 이메일이 아니면 중단하고 보고(로컬 config로 덮지 않는다 — includeIf가 왜 안 먹었는지 원인부터).
+- 신원: `git -C <repo> config user.email`이 워크스페이스 계정 이메일(`settings.local.json` env `MACHINA_EMAIL`, 미설정이면 이 확인 생략)이 아니면 중단하고 보고(로컬 config로 덮지 않는다 — includeIf가 왜 안 먹었는지 원인부터).
 - `git -C <repo> status --short` + `git diff --cached --name-only`로 staged까지 확인. 이 세션이 만들지 않은 변경은 커밋도 원복도 하지 않고 사용자에게 알린다.
 
 ## 1. 커밋
@@ -19,8 +19,8 @@ disable-model-invocation: true
 - 작업 단위로 나눠 파일 명시 add. 메시지·포함 파일 목록을 보여주고 컨펌받은 뒤 커밋.
 
 ## 2. push
-- origin이 워크스페이스 계정 소유일 때만 `git push origin HEAD`. remote가 없으면 로컬 커밋으로 끝(remote 생성은 사용자 결정).
-- 남의 repo(logic-pro-mcp, PalworldModManager 등)는 push하지 않는다 — fork·PR 여부를 사용자에게 묻는다.
+- origin이 워크스페이스 계정(`MACHINA_GH`, 없으면 활성 gh 계정) 소유일 때만 `git push origin HEAD`. 소유를 판단할 수 없으면 push 전에 사용자에게 묻는다. remote가 없으면 로컬 커밋으로 끝(remote 생성은 사용자 결정).
+- 남의 repo(`CLAUDE.local.md` 목록 등)는 push하지 않는다 — fork·PR 여부를 사용자에게 묻는다.
 
 ## 3. 보관
 - spec `status: shipped`, 커밋 해시를 `## 결과`에 추가.

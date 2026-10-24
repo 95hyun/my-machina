@@ -1,0 +1,11 @@
+#!/bin/sh
+# 새 run 디렉토리 생성 + 입력 카드 복사 + hackathon/runs/CURRENT 갱신. 사용: hackathon/bin/newrun <이름>
+set -e
+cd "$(dirname "$0")/../.."  # 워크스페이스 루트 — CURRENT는 루트 기준 경로
+name=$(printf '%s' "${1:-run}" | tr -cs 'A-Za-z0-9_-' '-' | sed 's/-*$//')
+run="hackathon/runs/$(date +%Y%m%d-%H%M)-${name}"
+mkdir -p "$run"
+cp hackathon/templates/input-card.md "$run/input-card.md"
+printf '%s\n' "$run" > hackathon/runs/CURRENT
+echo "$(date '+%H:%M:%S') topic start" >> "$run/timing.log"
+echo "$run"

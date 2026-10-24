@@ -13,5 +13,5 @@
   },
   "latency_regression_ratio": 1.5,
   "side_effect_skills": ["go", "qa", "ship"],
-  "path_leak_allow": ["CLAUDE.md", "README.md", ".claude/settings.json"]
+  "path_leak_allow": []
 }
