@@ -1,7 +1,6 @@
 # my-machina
 
-> *Deus ex machina* — 무대 위 기계 장치(machina)에서 내려와 막힌 이야기를 푸는 신.
-> 단, my-machina는 결말을 마음대로 바꾸지 않는다. **결정은 사용자의 것이다.**
+> *Deus ex machina*
 
 1인 개발용 Claude Code 하네스. **이 repo를 clone한 디렉토리가 곧 워크스페이스 루트**가 되고, 그 아래에 개인 프로젝트 repo들을 둔다.
 이전에 쓰던 팀 하네스의 위임·가드 뼈대와 [dryforge](https://github.com/prekuter/dryforge)의 질문 설계·증거 판정을 결합하고, 팀·외부 시스템 전제는 걷어냈다.
