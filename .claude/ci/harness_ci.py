@@ -360,27 +360,45 @@ def hook_tests(sb, home, ws, env, r, gh_me, gh_corp):
         rows.append(f"| review-suggest | {name} | — | {'(침묵)' if not o else o[:28] + '…'} | {'✅' if ok else '❌'} |")
         if not ok:
             fail(f"review-suggest 회귀: '{name}' 출력 {o[:60]!r}")
-    qg = os.path.join(ROOT, ".claude/hooks/qabot-guard.sh")
+    qg = os.path.join(ROOT, ".claude/hooks/role-guard.sh")
     rep = os.path.join(ws, "mine/.specs/qa/reports/2026-01-01-a.md")
+    src = os.path.join(ws, "mine/Sources/A.swift")
+    sp = lambda p: os.path.join(ws, "mine/.specs", p)
     qcases = [
         ("qabot → 리포트 경로", {"agent_type": "qabot", "file_path": rep}, "allow"),
-        ("qabot → recipe.md", {"agent_type": "qabot", "file_path": os.path.join(ws, "mine/.specs/qa/recipe.md")}, "deny"),
-        ("qabot → reports/../ 우회", {"agent_type": "qabot", "file_path": os.path.join(ws, "mine/.specs/qa/reports/../recipe.md")}, "deny"),
-        ("qabot → 소스", {"agent_type": "qabot", "file_path": os.path.join(ws, "mine/Sources/A.swift")}, "deny"),
-        ("메인 세션(agent_type 없음) → 소스", {"file_path": os.path.join(ws, "mine/Sources/A.swift")}, "allow"),
-        ("coder → 소스", {"agent_type": "coder", "file_path": os.path.join(ws, "mine/Sources/A.swift")}, "allow"),
+        ("qabot → recipe.md", {"agent_type": "qabot", "file_path": sp("qa/recipe.md")}, "deny"),
+        ("qabot → reports/../ 우회", {"agent_type": "qabot", "file_path": sp("qa/reports/../recipe.md")}, "deny"),
+        ("qabot → 소스", {"agent_type": "qabot", "file_path": src}, "deny"),
+        ("pm → <slug>/intent.md", {"agent_type": "pm", "file_path": sp("app/intent.md")}, "allow"),
+        ("pm → <slug>/research.md", {"agent_type": "pm", "file_path": sp("app/research.md")}, "allow"),
+        ("pm → <slug>/design.md", {"agent_type": "pm", "file_path": sp("app/design.md")}, "deny"),
+        ("pm → <slug>/spec.md", {"agent_type": "pm", "file_path": sp("app/spec.md")}, "deny"),
+        ("pm → 소스", {"agent_type": "pm", "file_path": src}, "deny"),
+        ("pm → qa/intent.md(qa는 slug 아님)", {"agent_type": "pm", "file_path": sp("qa/intent.md")}, "deny"),
+        ("pm → _archive/<날짜-slug>/intent.md", {"agent_type": "pm", "file_path": sp("_archive/2026-01-01-app/intent.md")}, "deny"),
+        ("pm → <slug>/../<slug>/ 우회", {"agent_type": "pm", "file_path": sp("app/../app/intent.md")}, "deny"),
+        ("pm → 상대경로", {"agent_type": "pm", "file_path": ".specs/app/intent.md"}, "deny"),
+        ("pm → NotebookEdit .ipynb", {"agent_type": "pm", "notebook_path": sp("app/x.ipynb")}, "deny"),
+        ("pd → <slug>/design.md", {"agent_type": "pd", "file_path": sp("app/design.md")}, "allow"),
+        ("pd → <slug>/design/flow.png", {"agent_type": "pd", "file_path": sp("app/design/flow.png")}, "allow"),
+        ("pd → <slug>/intent.md", {"agent_type": "pd", "file_path": sp("app/intent.md")}, "deny"),
+        ("pd → 소스", {"agent_type": "pd", "file_path": src}, "deny"),
+        ("pd → <slug>/design.md.bak", {"agent_type": "pd", "file_path": sp("app/design.md.bak")}, "deny"),
+        ("pd → /./ 세그먼트 우회", {"agent_type": "pd", "file_path": sp("app/./design.md")}, "deny"),
+        ("메인 세션(agent_type 없음) → 소스", {"file_path": src}, "allow"),
+        ("coder → 소스", {"agent_type": "coder", "file_path": src}, "allow"),
     ]
     for name, c, exp in qcases:
-        payload = {"tool_input": {"file_path": c["file_path"]}, "session_id": "q1"}
+        payload = {"tool_input": {k: c[k] for k in ("file_path", "notebook_path") if k in c}, "session_id": "q1"}
         if "agent_type" in c:
             payload["agent_type"] = c["agent_type"]
         out, _ = run_hook(qg, payload, henv)
         got = out.get("permissionDecision", "allow")
         ok = got == exp
         bad += not ok
-        rows.append(f"| qabot-guard | {name} | {exp} | {got} | {'✅' if ok else '❌'} |")
+        rows.append(f"| role-guard | {name} | {exp} | {got} | {'✅' if ok else '❌'} |")
         if not ok:
-            fail(f"qabot-guard 회귀: '{name}' 기대 {exp}, 실제 {got}")
+            fail(f"role-guard 회귀: '{name}' 기대 {exp}, 실제 {got}")
     row, ok = replay_selftest(sb, env, ws, r, gh_me)
     bad += not ok
     rows.append(row)
@@ -628,8 +646,8 @@ def latency_check(ws, env, r, gh_me, base_ref):
         "git-guard.sh:git": ("git-guard.sh", {"tool_input": {"command": "git commit -m x"}, "cwd": r["mine"], "session_id": "lat"}),
         "review-suggest.sh:noop": ("review-suggest.sh", {"tool_input": {"file_path": os.path.join(ws, "mine/README.md")}, "session_id": "lat"}),
         "review-suggest.sh:hit": ("review-suggest.sh", lambda i: {"tool_input": {"file_path": os.path.join(ws, "mine/A.swift")}, "session_id": f"lat-hit-{i}"}),
-        "qabot-guard.sh:noop": ("qabot-guard.sh", {"tool_input": {"file_path": os.path.join(ws, "mine/A.swift")}, "session_id": "lat"}),
-        "qabot-guard.sh:deny": ("qabot-guard.sh", {"tool_input": {"file_path": os.path.join(ws, "mine/A.swift")}, "agent_type": "qabot", "session_id": "lat"}),
+        "role-guard.sh:noop": ("role-guard.sh", {"tool_input": {"file_path": os.path.join(ws, "mine/A.swift")}, "session_id": "lat"}),
+        "role-guard.sh:deny": ("role-guard.sh", {"tool_input": {"file_path": os.path.join(ws, "mine/A.swift")}, "agent_type": "qabot", "session_id": "lat"}),
     }
     base_dir = tempfile.mkdtemp(prefix="machina-base-") if base_ref else None
     lim, ratio, rows = BUDGET["hook_latency_ms_median"], BUDGET["latency_regression_ratio"], []

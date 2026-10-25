@@ -12,6 +12,7 @@ disable-model-invocation: true
 ## 0. 게이트
 - spec 선택: 인자 > 대화 중인 slug > `*/.specs/*/spec.md` 중 `status: ready` 최신(복수면 AskUserQuestion 1회).
 - spec이 없으면 `ready` 스킬을 로드해 실행하고 **거기서 종료**한다(준비 턴의 산출물은 spec까지).
+- spec에 `미결 —` 표시가 남아 있으면 구현하지 않고 그 항목부터 묻는다(AskUserQuestion), 답을 spec에 반영한 뒤 진행한다.
 - `status: implemented`·`qa-passed`(수정 재진입)는 그대로 진행하되 `qa-passed`면 `[run]` 체크박스를 `[ ]`로 되돌린다(코드가 바뀌면 QA 결과가 무효). `shipped`면 계속 여부 확인.
 - **intent 게이트**: spec `intent:`가 가리키는 intent.md — 비어 있어도 `<project>/.specs/intent.md`(프로젝트 전체)가 있으면 그것 — 가 `draft`면 구현하지 않는다.
   - Open questions가 남았으면 그것부터 묻는다(AskUserQuestion).

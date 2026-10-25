@@ -155,10 +155,12 @@ flowchart LR
     ├── settings.json           hook 배선 + 워크스페이스에서 끄는 전역 플러그인
     ├── settings.local.json     (gitignore) 개인 env — MACHINA_EMAIL·MACHINA_GH·GH_CONFIG_DIR
     ├── skills/{ready,go,qa,ship,doctor}/          개발 루프 + 클론 진단
+    ├── skills/product/                          PM·PD·PE 역할 협업(제품 하나 단위)
     ├── skills/{topic,problem,deepen,mvp,pitch,share}/  해커톤 파이프라인
     ├── agents/{coder,qabot,harco,secuman}.md
+    ├── agents/{pm,pd}.md                        /product 전용(스킬만 호출)
     ├── agents/hk-{ideator,scout,researcher,redteam,reviewer}.md  해커톤 전용(스킬만 호출)
-    ├── hooks/{git-guard,review-suggest,qabot-guard}.sh
+    ├── hooks/{git-guard,review-suggest,role-guard}.sh
     └── ci/{harness_ci.py,budget.json}   하네스 CI
 .github/workflows/harness-ci.yml        push마다 macOS에서 CI
 hackathon/{RULES.md,bin/,templates/,runs/}  해커톤 규칙·보조 스크립트·양식, runs/는 산출물(gitignore)
@@ -236,6 +238,15 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 - **보관**: spec `status: shipped` → `.specs/_archive/<날짜>-<slug>/`
 - **결함 환류**: 워크스페이스 `defects.md`에서 같은 실패 메커니즘이 서로 다른 작업 3건 이상이면 `coder.md` "반복 함정"(범용) 또는 프로젝트 CLAUDE.md(고유)에 반영 제안 — 8줄 상한, 8주 재발 0이면 퇴출. cron 없이 ship마다 확인
 
+### `/product` — 제품 하나를 PM·PD·PE 역할로
+`disable-model-invocation` — `/product`로만 실행. 작은 수정·단건 기능은 `/ready` → `/go`.
+
+- **역할**: PO = 사용자(결정) · PM = `@pm`(intent) · PD = `@pd`(design.md, 화면 없는 제품은 사용 흐름·입출력 설계) · PE = 메인(기존 ready·go·qa 절차, `@coder`) · 판정자 = 매번 새 읽기 전용 Explore(`verify-pm.md`·`verify-pd.md`)
+- **흐름**: A 기획(PM 작성 → PE 실현성·PD 사용자 관점 검토) → **게이트①** → B 설계(PD 작성 → PM 판정·PE 실현성) → PE spec(ready 절차) → PD 판정 → **게이트②**(설계+spec, 구현·QA 실행 허가 포함) → C 구현·QA(go·qa 절차) → PD·PM 결과 판정 → **게이트③ 수락** → `/ship`
+- **재작업 루프**: 지적은 소유 역할이 고치고 새 판정자가 다시 본다. 단계마다 최대 2회, 남은 것은 충돌 목록으로 게이트에
+- **이견**: 기술·형식은 역할끼리, 제품 결정(대상·범위·우선순위·성공 기준·취향)은 게이트에서 PO가
+- **기록·재개**: `review-log.md`에 단계·회차·판정을 남기고, `/product <slug>` 재호출 시 이어 간다
+
 ---
 
 ## 에이전트
@@ -262,6 +273,11 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 - 🔴 이중 경로·규칙 충돌 · 깨진 참조 · 압축 중 구속력 소실 · hook 배선 불일치 · "hook이 막는다"는 주장의 실제 집행 여부 · 사고 방지 규칙 소실 · 부작용 스킬의 `disable-model-invocation` 누락
 - 🟡 네이티브 중복(대체 기능을 이름으로 명시) · 상시 규칙→hook 이관 가능성 · description 라우팅 품질 · CLAUDE.md↔메모리 이중 등재 · 워크스페이스 고정값 누수 · 모델 티어
 - 판정 근거는 상시 컨텍스트 비용 모델(CLAUDE.md 전량 > description > 스킬 본문 > hook 0)
+
+### `@pm`·`@pd` — /product 역할 (opus, 스킬만 호출)
+- 이름 붙여 세션 내내 유지하고 재작업은 SendMessage로 — 맥락이 쌓인다
+- 소유 산출물 밖은 쓰지 못한다(`role-guard.sh`). 제품 결정은 "PO 결정 필요"로 돌려줄 뿐 스스로 정하지 않는다
+- 자기 산출물은 판정하지 않는다 — 판정은 별개 Explore 인스턴스
 
 ### `@secuman` — 보안 감사 (opus, read-only)
 웹 OWASP가 아니라 **"내 맥에서 도는 도구"의 위협 모델**. diff 단위는 내장 `security-review`, 전체 감사·위협 모델 점검은 `@secuman`.
@@ -295,8 +311,8 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 ### `review-suggest.sh` (PostToolUse · Edit|Write|MultiEdit)
 코드(`.swift .rs .ts .py …`)나 하네스 파일이 수정되면 "일단락되면 리뷰하라"는 힌트를 **Claude 컨텍스트에만** 주입한다. 사용자 화면 출력 0, 세션당 프로젝트별 1회.
 
-### `qabot-guard.sh` (PreToolUse · Write|Edit|MultiEdit)
-@qabot의 파일 쓰기를 `<project>/.specs/qa/reports/`로 제한한다(`../` 우회 포함 deny). 서브에이전트 호출에만 hook 입력에 `agent_type`이 실려서 메인 세션·다른 에이전트는 무개입. Bash 리다이렉트 쓰기는 보지 않는다 — 명령 문자열에서 쓰기 대상을 안정적으로 판정할 수 없어 qabot.md의 금지 규칙으로 둔다.
+### `role-guard.sh` (PreToolUse · Write|Edit|MultiEdit|NotebookEdit)
+역할 에이전트의 파일 쓰기를 소유 경로로 제한한다 — qabot = `.specs/qa/reports/`, pm = `.specs/<slug>/intent.md`·`research.md`, pd = `.specs/<slug>/design.md`·`design/` (`../` 우회·상대경로 deny). 서브에이전트 호출에만 hook 입력에 `agent_type`이 실려서 메인 세션·다른 에이전트는 무개입. Bash 리다이렉트 쓰기는 보지 않는다 — 명령 문자열에서 쓰기 대상을 안정적으로 판정할 수 없어 에이전트 정의의 금지 규칙으로 둔다(pm·pd는 Bash 도구 자체가 없다).
 
 ---
 
@@ -317,7 +333,7 @@ python3 .claude/ci/harness_ci.py --base HEAD --replay   # + 과거 세션 명령
 | **상시 컨텍스트** | 매 세션 들어가는 토큰 | CLAUDE.md + 자동 호출 가능한 스킬·에이전트 description 바이트 (`disable-model-invocation` 스킬은 0) | `budget.json` 초과 |
 | **hook 지연** | 모든 Bash·Edit 호출에 붙는 시간 | 시나리오별 중앙값 15회, 기준 커밋의 hook을 git 객체에서 꺼내 같은 샌드박스에서 비교 | 예산 초과, 기준 대비 1.5배+20ms 초과 |
 | **hook 재생** (`--replay`) | 케이스 표에 없는 회귀 | 이 워크스페이스 과거 세션의 git·gh 명령을 기준 hook과 현재 hook에 같은 순서로 입력(세션별 임시 HOME, 명령은 실행 안 함). transcript가 이 머신에만 있어 Actions에선 생략 | 신규 차단(allow→deny) 1건 이상. 완화는 경고 → @harco 판정 |
-| **동작 회귀** | 가드가 막을 걸 막고 통과시킬 걸 통과시키나 | 격리 샌드박스(가짜 HOME·repo·worktree·gh 설정)에서 git-guard·review-suggest·qabot-guard 판정 케이스 + 재생기 자체 검증 + 구조 정합(frontmatter·배선·참조·상태 어휘·고정 경로) | 기대와 다른 판정, fail-open 위반, 정합 위반 |
+| **동작 회귀** | 가드가 막을 걸 막고 통과시킬 걸 통과시키나 | 격리 샌드박스(가짜 HOME·repo·worktree·gh 설정)에서 git-guard·review-suggest·role-guard 판정 케이스 + 재생기 자체 검증 + 구조 정합(frontmatter·배선·참조·상태 어휘·고정 경로) | 기대와 다른 판정, fail-open 위반, 정합 위반 |
 
 - 예산은 `.claude/ci/budget.json`. 올리려면 같은 커밋에서 수정하고 사유를 남긴다 — @harco가 상향의 정당성을 따로 판정한다.
 - hook 판정 로직을 바꾸면 `harness_ci.py`에 기대 판정 케이스를 같이 추가한다(없으면 @harco가 🔴).
@@ -424,6 +440,7 @@ GH_CONFIG_DIR=<GH_CONFIG_DIR 경로> gh auth status   # MACHINA_GH 계정
 | 위험도(risk) 기반 직접/위임 분기, `disable-model-invocation` | dryforge |
 | ship의 결정 승격(spec → 프로젝트 CLAUDE.md·`docs/decisions.md`), ready의 독립 추측·누락 탐지(`guess-hunt.md`), 요구사항↔작업↔확인 포인트 추적, "리뷰는 보험" | dryforge |
 | hook 과거 명령 재생(`--replay`, 기준 대비 신규 차단 0), 결함 기록(`.specs/defects.md`) → 반복 함정 환류, QA 경로→시나리오 매핑, 글로만 적힌 제약을 hook으로(qabot 쓰기 경로) | 이전 팀 하네스 (cron·팀 채널 없이 축소) |
+| `/product` PM·PD·PE 역할 협업 — 역할별 산출물 소유·교차 판정·재작업 상한·PO 게이트 3회 | 신규 (dryforge의 결정 소유권을 역할 단위로 확장) |
 
 | 버린 것 | 이유 |
 |---|---|
@@ -439,6 +456,12 @@ GH_CONFIG_DIR=<GH_CONFIG_DIR 경로> gh auth status   # MACHINA_GH 계정
 
 ### 결정 기록
 
+#### 2026-10-25 `/product` PM·PD·PE 역할 협업
+- **PO는 사용자**: 역할 에이전트는 제품 결정을 "PO 결정 필요"로 올릴 뿐 정하지 않는다. PO 에이전트는 기각 — 그럴듯한 추측이 제품을 결정하게 된다.
+- **협업 = 교차 판정 + 재작업(게이트마다 합계 2회)**: 자유 토론 라운드는 기각 — 같은 모델끼리는 동의로 흐르고 끝이 없다. 판정자는 작성 에이전트와 별개인 읽기 전용 인스턴스.
+- **PE = 메인 세션의 기존 ready·go·qa**: 별도 PE 에이전트는 같은 일을 하는 두 번째 경로라 기각. 그 절차 안의 질문 지점은 product SKILL 배정 표로 게이트에 흡수하거나 유지한다.
+- **pm·pd는 커스텀 에이전트(description +94B, 예산 2400→2500)**: general-purpose + 프롬프트(비용 0)는 agent_type이 공용이라 role-guard로 쓰기 경로를 강제할 수 없고 도구·모델도 고정되지 않아 기각.
+
 #### 2026-10-25 dryforge·이전 팀 하네스 장점 이식
 - **hook 재생은 로컬 전용·옵트인**: transcript는 이 머신에만 있고 개인 명령이 담겨 fixture로 커밋할 수 없다. 신규 차단(allow→deny)만 실패로 두고 완화는 경고 — 의도된 오탐 수정까지 막지 않기 위해. 재생은 세션마다 임시 HOME이라 세션 간 바인딩(ask)은 재현하지 않는다.
 - **결함 기록은 프로젝트별 `.specs/defects.md`(미추적)**: 공유 번들에 개인 프로젝트 내용이 들어가지 않게. 환류 결과만 범용 문장으로 `coder.md`에 올린다.
@@ -453,4 +476,4 @@ GH_CONFIG_DIR=<GH_CONFIG_DIR 경로> gh auth status   # MACHINA_GH 계정
 3. `python3 .claude/ci/harness_ci.py --base HEAD` 통과 — hook 판정을 바꿨으면 케이스부터 추가하고, 로컬에서 `--replay`로 과거 세션 명령을 재생해 새로 막히는 명령이 0건인지 확인(transcript는 이 머신에만 있어 Actions에서는 생략)
 4. `@harco` 리뷰 후 워크스페이스 루트(이 repo)에 커밋 — push하면 GitHub Actions가 같은 CI를 다시 돌린다
 - 함정: settings가 작업 트리의 hook을 직접 가리키므로 **hook 수정은 커밋 전에도 모든 세션에 즉시 적용**된다. 판정을 바꿨으면 다른 세션을 쓰기 전에 3번(`--replay` 포함)부터.
-- 함정: hook 입력의 `agent_type`으로 에이전트를 구별하는 hook(`qabot-guard.sh`)은 내장 에이전트로만 실측됐다. 커스텀 에이전트 이름이 그대로 실리는지는 첫 실사용(qabot의 리포트 밖 Write → deny)으로 확인한다.
+- 함정: hook 입력의 `agent_type`은 서브에이전트 호출에만 실리고(메인 세션엔 없음), 커스텀 에이전트는 정의 이름 그대로 실린다(2026-10-25 실측: pd의 소유 경로 밖 Write → role-guard deny). 새 에이전트 파일은 세션 도중 추가돼도 에이전트 타입으로 바로 쓸 수 있었다.

@@ -12,7 +12,7 @@ argument-hint: '[project] <요청 요약>'
 
 1. **대상 확정**: 프로젝트 = 인자 > 대화 맥락 > cwd. 모호하면 AskUserQuestion 1회. slug = 짧은 영문 kebab.
    - 처음이면 `.specs/`를 repo 로컬 제외에 등록: `grep -qx '.specs/' <repo>/.git/info/exclude || echo '.specs/' >> <repo>/.git/info/exclude`
-2. **영향 범위 탐색**: 직접 grep/Read. 폭이 크면 `Explore`(`model: "sonnet"`). 결과는 `파일:라인`. 프로젝트 CLAUDE.md·`docs/decisions.md`(있으면)·README·auto-memory의 해당 프로젝트 항목을 먼저 본다.
+2. **영향 범위 탐색**: 직접 grep/Read. 폭이 크면 `Explore`(`model: "sonnet"`). 결과는 `파일:라인`. 프로젝트 CLAUDE.md·`docs/decisions.md`(있으면)·같은 slug의 `design.md`(있으면 — 확인 포인트의 `[run]`은 그 "확인 방법"에서 끌어온다)·README·auto-memory의 해당 프로젝트 항목을 먼저 본다.
 3. **요청안 평가**: 요청한 to-be를 먼저 평가(가능/리스크/비용). 더 나은 안이 있으면 **추가로** 3줄 제안(무엇이 다른가·왜 낫나·비용 차이). 기본 진행안은 항상 요청안이다.
 3.5. **intent 판정**: "무엇을 만들지"가 아직 굳지 않은 작업이면 spec보다 intent.md를 먼저 쓴다.
    - 대상 = 새 프로젝트 시작, 또는 여러 세션에 걸치고 제품 재량이 큰 기능. 면제 = 버그 수정·동작이 명확한 단건 변경.
