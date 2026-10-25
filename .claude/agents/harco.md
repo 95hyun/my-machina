@@ -28,14 +28,16 @@ color: purple
 - **CI를 먼저 돌린다**: `python3 "$ROOT/.claude/ci/harness_ci.py" --base <기준>`
   - 기준 = 범위의 시작 커밋. 미커밋 변경이면 `HEAD`, 커밋 범위면 그 base.
   - CI 실패는 그대로 🔴 CRITICAL로 옮긴다. 결과 표(상시 바이트 변화, hook 회귀, 지연 배율)는 리포트에 인용한다.
+  - 범위에 `git-guard.sh`가 있으면 `--replay`를 붙인다. 케이스 표는 케이스가 없는 회귀를 보지 못하기 때문이다. 신규 차단(allow→deny)은 CI가 실패시키고, 완화(deny→allow) 목록은 건마다 의도한 것인지 판정한다. 의도하지 않은 완화는 🔴 CRITICAL이다.
 
 ## CI가 지키는 것 (`.claude/ci/`)
 | 축 | 검사 | 실패 조건 |
 |---|---|---|
 | 구조 정합 | frontmatter(name·description·model·tools), 부작용 스킬 `disable-model-invocation`, 템플릿 참조, settings↔hook 배선·고아 hook, `bash -n`, `@에이전트` 실존, `[*-hint]` 주입 hook 실존, 상태 어휘, 머신 고정 경로 | 하나라도 어긋남 |
-| hook 회귀 | 격리 샌드박스(가짜 HOME·repo·worktree·gh 설정)에서 git-guard·review-suggest 판정 케이스 | 기대 판정과 다름, exit≠0(fail-open 위반) |
+| hook 회귀 | 격리 샌드박스(가짜 HOME·repo·worktree·gh 설정)에서 git-guard·review-suggest·qabot-guard 판정 케이스 | 기대 판정과 다름, exit≠0(fail-open 위반) |
 | 상시 컨텍스트 | CLAUDE.md + 자동 호출 가능한 스킬·에이전트 description 바이트 | `budget.json` 초과 |
 | hook 지연 | 시나리오별 중앙값(15회), 기준 커밋 hook과 같은 샌드박스에서 비교 | 예산 초과, 또는 기준 대비 1.5배+20ms 초과 |
+| hook 재생 (`--replay`, 로컬 전용) | 이 워크스페이스 과거 세션의 git·gh 명령을 기준 hook과 현재 hook에 같은 순서로 입력(임시 HOME, 실행 안 함). 재생기 자체 검증 케이스는 항상 돈다 | 신규 차단 1건 이상, 또는 변형 hook을 못 잡음 |
 
 CI가 "통과"라고 해서 리뷰가 끝난 게 아니다. 아래 성능 판정과 체크리스트는 판단 층의 몫이다.
 

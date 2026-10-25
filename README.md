@@ -158,13 +158,14 @@ flowchart LR
     ├── skills/{topic,problem,deepen,mvp,pitch,share}/  해커톤 파이프라인
     ├── agents/{coder,qabot,harco,secuman}.md
     ├── agents/hk-{ideator,scout,researcher,redteam,reviewer}.md  해커톤 전용(스킬만 호출)
-    ├── hooks/{git-guard,review-suggest}.sh
+    ├── hooks/{git-guard,review-suggest,qabot-guard}.sh
     └── ci/{harness_ci.py,budget.json}   하네스 CI
 .github/workflows/harness-ci.yml        push마다 macOS에서 CI
 hackathon/{RULES.md,bin/,templates/,runs/}  해커톤 규칙·보조 스크립트·양식, runs/는 산출물(gitignore)
 
 <workspace>/<project>/          각자 독립 git repo — 이 repo는 추적하지 않는다
-<workspace>/<project>/.specs/   작업 문서(intent·spec)와 qa/(recipe·scenarios·reports) — 각 repo의 .git/info/exclude로 제외
+<workspace>/<project>/.specs/   작업 문서(intent·spec)·findings.md(범위 밖 발견)·defects.md(확정 결함)와 qa/(recipe·scenarios·reports) — 각 repo의 .git/info/exclude로 제외
+<workspace>/<project>/docs/decisions.md   결정 이유 — /ship이 spec에서 승격(repo에 커밋)
 ```
 
 ### 세션 시작 위치 (중요)
@@ -200,7 +201,8 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
    - 사용자 결정 필요 → 질문 후보
    - 해당 없음 → `N/A — 이유`로 기록 (**조용히 버리지 않는다**)
 5. **grounds-gate** — 질문 후보는 ① 정확한 위치 ② 이미 다뤄지지 않았다는 적극적 근거 ③ 방치 시 결과, **셋을 모두 댈 수 있을 때만** 묻는다
-6. **분기** — 질문이 남으면 spec 없이 질문만, 해소되면 `spec-template.md`대로 박제(각 작업에 `risk`와 검증 명령, intent가 있으면 확인 포인트를 Proposed outcome에서 끌어옴)
+   - **독립 추측 탐지** — intent가 있거나 RISKY 작업이 있으면, 대화에 참여하지 않은 읽기 전용 서브에이전트(`guess-hunt.md`)가 근거 없이 정해진 결정과 대화에서 정했는데 spec에서 빠진 결정을 찾는다
+6. **분기** — 질문이 남으면 spec 없이 질문만, 해소되면 `spec-template.md`대로 박제(각 작업에 `risk`와 검증 명령, intent가 있으면 확인 포인트를 Proposed outcome에서 끌어옴). 쓴 뒤 요구사항↔작업↔확인 포인트 추적 점검
 7. **종료 보고 후 정지**
 
 ### `/go` — spec대로 구현·검증, 커밋 전 정지
@@ -209,9 +211,9 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 - **게이트**: spec이 없으면 `/ready`만 돌리고 멈춘다
 - **intent 게이트**: 연결된 intent가 `draft`면 구현하지 않는다 — 남은 질문을 묻고, 요약을 보여준 뒤 사용자 확인을 받아 `confirmed`로 바꾼다
 - **작업장**: 기본은 현재 브랜치(main) 직접. 다른 세션과 겹치면 worktree 제안
-- **구현 분기**: spec의 `risk`가 MECHANICAL → 직접 / RISKY·병렬 → @coder (spec 경로·좌표·검증 명령 동봉)
+- **구현 분기**: spec의 `risk`가 MECHANICAL → 직접 / RISKY·병렬 → @coder (spec 경로·좌표·검증 명령 동봉). risk 공란은 RISKY 취급, 리뷰는 보험이지 기준을 낮출 근거가 아니다
 - **검증**: `[static]` 확인 포인트 명령의 exit code 캡처, 평가 불가는 `미검증`, 실패 수정 후엔 **전체** 재실행. `[run]` 포인트는 판정하지 않고 `/qa`로 넘긴다
-- **리뷰**: 30줄 초과 또는 로직·상태·계약 변경 시 내장 `code-review`. 하네스 변경은 `@harco`, 셸·권한·IPC·민감 데이터·배포 스크립트 변경은 내장 `security-review`(+새 진입점이면 `@secuman`). intent가 있으면 Proposed outcome(빠진 것)·Non-goals(넘친 것)와 대조
+- **리뷰**: 30줄 초과 또는 로직·상태·계약 변경 시 내장 `code-review`. 하네스 변경은 `@harco`, 셸·권한·IPC·민감 데이터·배포 스크립트 변경은 내장 `security-review`(+새 진입점이면 `@secuman`). intent가 있으면 Proposed outcome(빠진 것)·Non-goals(넘친 것)와 대조. 반영한 지적은 `.specs/defects.md`에 1줄
 - **보고**: spec `status: implemented` + 결과 기록
 
 ### `/qa` — 런타임·UI 확인 포인트를 독립 실측
@@ -221,15 +223,18 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 - **스펙 조립**: `[run]` 포인트 · recipe · 매칭 시나리오 · 실행 영향(띄워 둔 앱 재시작, 실데이터 변경과 원복 방법)
 - **허가**: 실행 / 수정 후 실행 / 보류 — 허가 없이는 스폰하지 않는다
 - **리포트 불신 검증**: 근거(스냅샷·로그·exit code·MCP 응답) 없는 ✅는 미검증으로 격하, ❌는 원인 확인 후 `/go` 재진입 제안. 전부 ✅면 `status: qa-passed`
-- **학습 회수**: 📌 후보를 recipe·시나리오·qabot 함정·findings로 분류해 결과 보고와 같은 턴에 승인 1회로 반영
+- **시나리오 매칭**: recipe의 매핑 표(경로 패턴 → 시나리오)와 이번 변경 파일을 대조
+- **학습 회수**: 📌 후보를 recipe·시나리오·qabot 함정·defects(QA가 잡은 결함)로 분류해 결과 보고와 같은 턴에 승인 1회로 반영
 
 ### `/ship` — 커밋 → push → 보관
 `disable-model-invocation` — `/ship`으로만 실행.
 
 - **프리플라이트**: 커밋 신원이 개인 계정인지, staged 목록에 남의 변경이 섞이지 않았는지, `[run]` 포인트가 QA 없이 남지 않았는지
+- **결정 승격**: 커밋 전에 spec을 다시 읽고 코드로 알 수 없는 것만 프로젝트로 올린다 — 함정·검증법 → 프로젝트 CLAUDE.md, 결정 이유 → `docs/decisions.md` (남의 repo는 auto-memory, 하네스 자체는 README)
 - **커밋**: 그 repo의 메시지 스타일을 따르고 사용자 컨펌 후 커밋
 - **push**: origin이 내 계정 소유일 때만 `git push origin HEAD` (남의 repo는 git-guard가 deny, 기여는 사용자 결정)
 - **보관**: spec `status: shipped` → `.specs/_archive/<날짜>-<slug>/`
+- **결함 환류**: 워크스페이스 `defects.md`에서 같은 실패 메커니즘이 서로 다른 작업 3건 이상이면 `coder.md` "반복 함정"(범용) 또는 프로젝트 CLAUDE.md(고유)에 반영 제안 — 8줄 상한, 8주 재발 0이면 퇴출. cron 없이 ship마다 확인
 
 ---
 
@@ -290,6 +295,9 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 ### `review-suggest.sh` (PostToolUse · Edit|Write|MultiEdit)
 코드(`.swift .rs .ts .py …`)나 하네스 파일이 수정되면 "일단락되면 리뷰하라"는 힌트를 **Claude 컨텍스트에만** 주입한다. 사용자 화면 출력 0, 세션당 프로젝트별 1회.
 
+### `qabot-guard.sh` (PreToolUse · Write|Edit|MultiEdit)
+@qabot의 파일 쓰기를 `<project>/.specs/qa/reports/`로 제한한다(`../` 우회 포함 deny). 서브에이전트 호출에만 hook 입력에 `agent_type`이 실려서 메인 세션·다른 에이전트는 무개입. Bash 리다이렉트 쓰기는 보지 않는다 — 명령 문자열에서 쓰기 대상을 안정적으로 판정할 수 없어 qabot.md의 금지 규칙으로 둔다.
+
 ---
 
 ## 하네스 CI
@@ -299,6 +307,7 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 ```bash
 python3 .claude/ci/harness_ci.py                 # 전체 검사
 python3 .claude/ci/harness_ci.py --base HEAD~1   # + 기준 커밋 대비 변화량
+python3 .claude/ci/harness_ci.py --base HEAD --replay   # + 과거 세션 명령 재생 (로컬 전용)
 ```
 
 하네스 성능은 세 축으로 정의한다.
@@ -307,7 +316,8 @@ python3 .claude/ci/harness_ci.py --base HEAD~1   # + 기준 커밋 대비 변화
 |---|---|---|---|
 | **상시 컨텍스트** | 매 세션 들어가는 토큰 | CLAUDE.md + 자동 호출 가능한 스킬·에이전트 description 바이트 (`disable-model-invocation` 스킬은 0) | `budget.json` 초과 |
 | **hook 지연** | 모든 Bash·Edit 호출에 붙는 시간 | 시나리오별 중앙값 15회, 기준 커밋의 hook을 git 객체에서 꺼내 같은 샌드박스에서 비교 | 예산 초과, 기준 대비 1.5배+20ms 초과 |
-| **동작 회귀** | 가드가 막을 걸 막고 통과시킬 걸 통과시키나 | 격리 샌드박스(가짜 HOME·repo·worktree·gh 설정)에서 git-guard·review-suggest 판정 케이스 + 구조 정합(frontmatter·배선·참조·상태 어휘·고정 경로) | 기대와 다른 판정, fail-open 위반, 정합 위반 |
+| **hook 재생** (`--replay`) | 케이스 표에 없는 회귀 | 이 워크스페이스 과거 세션의 git·gh 명령을 기준 hook과 현재 hook에 같은 순서로 입력(세션별 임시 HOME, 명령은 실행 안 함). transcript가 이 머신에만 있어 Actions에선 생략 | 신규 차단(allow→deny) 1건 이상. 완화는 경고 → @harco 판정 |
+| **동작 회귀** | 가드가 막을 걸 막고 통과시킬 걸 통과시키나 | 격리 샌드박스(가짜 HOME·repo·worktree·gh 설정)에서 git-guard·review-suggest·qabot-guard 판정 케이스 + 재생기 자체 검증 + 구조 정합(frontmatter·배선·참조·상태 어휘·고정 경로) | 기대와 다른 판정, fail-open 위반, 정합 위반 |
 
 - 예산은 `.claude/ci/budget.json`. 올리려면 같은 커밋에서 수정하고 사유를 남긴다 — @harco가 상향의 정당성을 따로 판정한다.
 - hook 판정 로직을 바꾸면 `harness_ci.py`에 기대 판정 케이스를 같이 추가한다(없으면 @harco가 🔴).
@@ -412,6 +422,8 @@ GH_CONFIG_DIR=<GH_CONFIG_DIR 경로> gh auth status   # MACHINA_GH 계정
 | "결정은 누구의 것인가", grounds-gate, `N/A — 이유` 기록 | dryforge |
 | exit code 증거 판정, "평가 못 한 체크는 실패" | dryforge |
 | 위험도(risk) 기반 직접/위임 분기, `disable-model-invocation` | dryforge |
+| ship의 결정 승격(spec → 프로젝트 CLAUDE.md·`docs/decisions.md`), ready의 독립 추측·누락 탐지(`guess-hunt.md`), 요구사항↔작업↔확인 포인트 추적, "리뷰는 보험" | dryforge |
+| hook 과거 명령 재생(`--replay`, 기준 대비 신규 차단 0), 결함 기록(`.specs/defects.md`) → 반복 함정 환류, QA 경로→시나리오 매핑, 글로만 적힌 제약을 hook으로(qabot 쓰기 경로) | 이전 팀 하네스 (cron·팀 채널 없이 축소) |
 
 | 버린 것 | 이유 |
 |---|---|
@@ -423,11 +435,22 @@ GH_CONFIG_DIR=<GH_CONFIG_DIR 경로> gh auth status   # MACHINA_GH 계정
 | 투명성 헤더, 버전 4곳 동기화 | 비용 > 가치 |
 | dryforge의 고정 `docs/` 7종, worktree 8병렬 웨이브 | 소규모 프로젝트·네이티브 빌드 비용 |
 | dryforge의 "호스트 메모리 금지" | auto-memory를 적극 사용 |
+| 상류(이전 팀 하네스) 정기 동기화 스킬 | 공유용 하네스에 특정 상류 의존이 생김 → 1회 이식으로 대체 |
+
+### 결정 기록
+
+#### 2026-10-25 dryforge·이전 팀 하네스 장점 이식
+- **hook 재생은 로컬 전용·옵트인**: transcript는 이 머신에만 있고 개인 명령이 담겨 fixture로 커밋할 수 없다. 신규 차단(allow→deny)만 실패로 두고 완화는 경고 — 의도된 오탐 수정까지 막지 않기 위해. 재생은 세션마다 임시 HOME이라 세션 간 바인딩(ask)은 재현하지 않는다.
+- **결함 기록은 프로젝트별 `.specs/defects.md`(미추적)**: 공유 번들에 개인 프로젝트 내용이 들어가지 않게. 환류 결과만 범용 문장으로 `coder.md`에 올린다.
+- **독립 추측 탐지는 에이전트 정의가 아니라 프롬프트 파일 + Explore**: description 상시 비용 0, 읽기 전용은 도구 구성으로 강제.
+- **결정 승격은 커밋 전(ship 0.5)**: 승격 diff가 같은 커밋 컨펌에 들어가야 해서. 기각: auto-memory 단독(다른 머신·에이전트에서 소실), 프로젝트 CLAUDE.md 단독(결정 이유까지 상시 비용).
 
 ---
 
 ## 하네스를 바꿀 때
 1. 상시 비용부터 따진다 — CLAUDE.md에 넣을 것인가, 스킬 본문인가, hook인가
 2. hook은 진짜 사고 위험에만, 항상 fail-open(무관한 호출을 깨지 않게)
-3. `python3 .claude/ci/harness_ci.py --base HEAD` 통과 — hook 판정을 바꿨으면 케이스부터 추가
+3. `python3 .claude/ci/harness_ci.py --base HEAD` 통과 — hook 판정을 바꿨으면 케이스부터 추가하고, 로컬에서 `--replay`로 과거 세션 명령을 재생해 새로 막히는 명령이 0건인지 확인(transcript는 이 머신에만 있어 Actions에서는 생략)
 4. `@harco` 리뷰 후 워크스페이스 루트(이 repo)에 커밋 — push하면 GitHub Actions가 같은 CI를 다시 돌린다
+- 함정: settings가 작업 트리의 hook을 직접 가리키므로 **hook 수정은 커밋 전에도 모든 세션에 즉시 적용**된다. 판정을 바꿨으면 다른 세션을 쓰기 전에 3번(`--replay` 포함)부터.
+- 함정: hook 입력의 `agent_type`으로 에이전트를 구별하는 hook(`qabot-guard.sh`)은 내장 에이전트로만 실측됐다. 커스텀 에이전트 이름이 그대로 실리는지는 첫 실사용(qabot의 리포트 밖 Write → deny)으로 확인한다.

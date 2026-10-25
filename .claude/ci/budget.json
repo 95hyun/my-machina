@@ -9,7 +9,9 @@
     "git-guard.sh:noop": 60,
     "git-guard.sh:git": 450,
     "review-suggest.sh:noop": 60,
-    "review-suggest.sh:hit": 150
+    "review-suggest.sh:hit": 150,
+    "qabot-guard.sh:noop": 60,
+    "qabot-guard.sh:deny": 100
   },
   "latency_regression_ratio": 1.5,
   "side_effect_skills": ["go", "qa", "ship"],

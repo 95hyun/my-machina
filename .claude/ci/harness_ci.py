@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """my-machina 하네스 CI — 구조 정합 · hook 회귀 테스트 · 성능 예산(상시 컨텍스트, hook 지연).
 
-사용: python3 .claude/ci/harness_ci.py [--base <git-ref>] [--summary <file>]
+사용: python3 .claude/ci/harness_ci.py [--base <git-ref>] [--summary <file>] [--replay [--replay-dir <dir>]]
   --base    비교 기준 커밋. 상시 바이트와 hook 지연의 변화량을 같이 보고한다(파일은 git 객체에서 읽어 체크아웃 불필요).
   --summary 마크다운 리포트를 쓸 경로(GitHub Actions의 $GITHUB_STEP_SUMMARY 등).
+  --replay  로컬 전용: 과거 transcript의 git/gh 명령을 기준 ref(없으면 HEAD) git-guard와 현재 git-guard에 입력해 판정 비교(실행 안 함).
+            --replay-dir로 transcript 디렉토리 지정.
 표준 라이브러리만 사용 — macOS 기본 python3와 GitHub macos 러너에서 그대로 돈다.
 """
 import argparse, glob, json, os, re, shutil, statistics, subprocess, sys, tempfile, time
@@ -358,7 +360,204 @@ def hook_tests(sb, home, ws, env, r, gh_me, gh_corp):
         rows.append(f"| review-suggest | {name} | — | {'(침묵)' if not o else o[:28] + '…'} | {'✅' if ok else '❌'} |")
         if not ok:
             fail(f"review-suggest 회귀: '{name}' 출력 {o[:60]!r}")
+    qg = os.path.join(ROOT, ".claude/hooks/qabot-guard.sh")
+    rep = os.path.join(ws, "mine/.specs/qa/reports/2026-01-01-a.md")
+    qcases = [
+        ("qabot → 리포트 경로", {"agent_type": "qabot", "file_path": rep}, "allow"),
+        ("qabot → recipe.md", {"agent_type": "qabot", "file_path": os.path.join(ws, "mine/.specs/qa/recipe.md")}, "deny"),
+        ("qabot → reports/../ 우회", {"agent_type": "qabot", "file_path": os.path.join(ws, "mine/.specs/qa/reports/../recipe.md")}, "deny"),
+        ("qabot → 소스", {"agent_type": "qabot", "file_path": os.path.join(ws, "mine/Sources/A.swift")}, "deny"),
+        ("메인 세션(agent_type 없음) → 소스", {"file_path": os.path.join(ws, "mine/Sources/A.swift")}, "allow"),
+        ("coder → 소스", {"agent_type": "coder", "file_path": os.path.join(ws, "mine/Sources/A.swift")}, "allow"),
+    ]
+    for name, c, exp in qcases:
+        payload = {"tool_input": {"file_path": c["file_path"]}, "session_id": "q1"}
+        if "agent_type" in c:
+            payload["agent_type"] = c["agent_type"]
+        out, _ = run_hook(qg, payload, henv)
+        got = out.get("permissionDecision", "allow")
+        ok = got == exp
+        bad += not ok
+        rows.append(f"| qabot-guard | {name} | {exp} | {got} | {'✅' if ok else '❌'} |")
+        if not ok:
+            fail(f"qabot-guard 회귀: '{name}' 기대 {exp}, 실제 {got}")
+    row, ok = replay_selftest(sb, env, ws, r, gh_me)
+    bad += not ok
+    rows.append(row)
     report.append(f"### hook 회귀 테스트 ({len(rows) - bad}/{len(rows)})\n| hook | 케이스 | 기대 | 실제 | |\n|---|---|---|---|---|\n" + "\n".join(rows))
+
+
+# ── 3b. hook 과거 명령 재생 (기준 ref hook vs 현재 hook) ─────────────────────
+RANK = {"allow": 0, "ask": 1, "deny": 2}  # 클수록 차단 방향. 그 외 값은 ask와 같은 중간으로 본다
+
+
+def extract_replay(src_dir):
+    """transcript *.jsonl(최상위만)에서 git/gh 단어가 든 Bash 명령을 세션별 원래 순서로. 반환 {sid: [(cwd, cmd)]}."""
+    sessions = {}
+    for f in sorted(glob.glob(os.path.join(src_dir, "*.jsonl"))):
+        try:
+            lines = open(f, encoding="utf-8").read().splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            content = (d.get("message") or {}).get("content") if d.get("type") == "assistant" else None
+            if not isinstance(content, list):
+                continue
+            for c in content:
+                if not (isinstance(c, dict) and c.get("type") == "tool_use" and c.get("name") == "Bash"):
+                    continue
+                cmd = (c.get("input") or {}).get("command") or ""
+                if not re.search(r"\b(git|gh)\b", cmd):
+                    continue
+                sid = d.get("sessionId") or "unknown"
+                sessions.setdefault(sid, []).append((d.get("timestamp") or "", d.get("cwd") or "", cmd))
+    out = {}
+    for sid, items in sessions.items():
+        items.sort(key=lambda x: x[0])  # 안정 정렬 — 같은 timestamp(한 메시지의 병렬 호출)는 원래 순서 유지
+        seq = []
+        for _, cwd, cmd in items:
+            if not seq or seq[-1] != (cwd, cmd):
+                seq.append((cwd, cmd))
+        out[sid] = seq
+    return out
+
+
+def replay(sessions, base_hook, cur_hook, env, gitconfig):
+    """양쪽 hook에 같은 입력·순서를 넣어 판정 목록 반환. 명령은 실행하지 않는다.
+    세션마다 별도 임시 HOME — 공유 HOME을 병렬로 쓰면 타 세션 바인딩(ask) 판정이 실행 타이밍에 따라 흔들린다."""
+    from concurrent.futures import ThreadPoolExecutor
+    root = tempfile.mkdtemp(prefix="machina-replay-")
+    try:
+        def run(side, hook, idx, sid):
+            home = os.path.join(root, side, str(idx))
+            os.makedirs(home)
+            if gitconfig is not None:
+                with open(os.path.join(home, ".gitconfig"), "w") as f:
+                    f.write(gitconfig)
+            henv = dict(env, HOME=home)
+            res = []
+            for cwd, cmd in sessions[sid]:
+                out, _ = run_hook(hook, {"tool_input": {"command": cmd}, "cwd": cwd, "session_id": sid}, henv)
+                res.append(out.get("permissionDecision", "allow"))
+            return res
+
+        sids = list(sessions)
+        with ThreadPoolExecutor(max_workers=max(2, os.cpu_count() or 2)) as ex:
+            futs = {(side, sid): ex.submit(run, side, hook, i, sid)
+                    for side, hook in (("base", base_hook), ("cur", cur_hook)) for i, sid in enumerate(sids)}
+            decided = {k: f.result() for k, f in futs.items()}
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+    return [(sid, cwd, cmd, b, c) for sid in sids
+            for (cwd, cmd), b, c in zip(sessions[sid], decided[("base", sid)], decided[("cur", sid)])]
+
+
+def replay_diff(results):
+    """(차단 방향 변화, 완화 변화)."""
+    tighter = [x for x in results if RANK.get(x[4], 1) > RANK.get(x[3], 1)]
+    looser = [x for x in results if RANK.get(x[4], 1) < RANK.get(x[3], 1)]
+    return tighter, looser
+
+
+def replay_selftest(sb, env, ws, r, gh_me):
+    """재생 검사기가 신규 차단을 실제로 잡는지: 가짜 transcript + 'push면 무조건 deny' 변형 hook."""
+    d = tempfile.mkdtemp(prefix="replay-self-", dir=sb)
+    with open(os.path.join(d, "fake.jsonl"), "w") as f:
+        for cmd, cwd in (("git push origin HEAD", r["mine"]), ("ls", ws)):
+            f.write(json.dumps({"type": "assistant", "cwd": cwd, "sessionId": "replay-self", "timestamp": "",
+                                "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": cmd}}]}}) + "\n")
+    gg = os.path.join(ROOT, ".claude/hooks/git-guard.sh")
+    src = read(gg).split("\n", 1)
+    # 입력을 읽어 판정한 뒤 stdin을 되돌려 원본 본문이 그대로 이어서 돌게 한다
+    inject = ('INPUT=$(cat)\n'
+              'case "$INPUT" in *"git push"*) echo \'{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"mutant"}}\'; exit 0 ;; esac\n'
+              'exec 0<<<"$INPUT"\n')
+    mut = os.path.join(d, "git-guard-mutant.sh")
+    with open(mut, "w") as f:
+        f.write(src[0] + "\n" + inject + src[1])
+    sandbox_cfg = read(os.path.join(sb, "home", ".gitconfig"))
+    henv = {k: v for k, v in id_env(env, ws, gh_me).items() if k != "HOME"}
+    results = replay(extract_replay(d), gg, mut, henv, sandbox_cfg)
+    tighter, _ = replay_diff(results)
+    got = sum(1 for x in tighter if x[3] == "allow" and x[4] == "deny")
+    ok = len(results) == 1 and got == 1 and len(tighter) == 1
+    if not ok:
+        fail(f"재생 자체 검증: 변형 hook의 allow→deny 1건을 못 잡음(재생 {len(results)}건, 포착 {got}건, 차단 변화 {len(tighter)}건)")
+    return f"| replay | 변형 hook(push 무조건 deny) → allow→deny 포착 | 1 | {got} | {'✅' if ok else '❌'} |", ok
+
+
+def replay_check(base_ref, src_dir):
+    title = "### hook 재생 (과거 명령)"
+    if not os.path.isdir(src_dir):
+        warn(f"재생 생략 — transcript 디렉토리 없음 ({src_dir})")
+        return
+    sessions = extract_replay(src_dir)
+    total = sum(len(v) for v in sessions.values())
+    if not total:
+        warn(f"재생 생략 — git/gh 명령 0건 ({src_dir})")
+        return
+    ref = base_ref or "HEAD"
+    src = git_show(ref, ".claude/hooks/git-guard.sh")
+    if src is None:
+        warn(f"재생 생략 — 기준 ref '{ref}'에 git-guard.sh 없음")
+        return
+    real_home = os.path.expanduser("~")
+    gitconfig = None
+    gc = os.path.join(real_home, ".gitconfig")
+    if os.path.exists(gc):
+        # 임시 HOME에서도 includeIf gitdir:~/…·path = ~/… 가 실제 경로를 가리키도록 전개
+        gitconfig = re.sub(r'(^|[\s=:"\'])~(?=/)', lambda m: m.group(1) + real_home, read(gc), flags=re.M)
+    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "CLAUDE_PROJECT_DIR": ROOT}
+    try:
+        lenv = json.load(open(os.path.join(ROOT, ".claude/settings.local.json"), encoding="utf-8")).get("env", {})
+    except (OSError, ValueError):
+        lenv = {}
+    for k in ("MACHINA_EMAIL", "MACHINA_GH", "GH_CONFIG_DIR"):
+        if lenv.get(k):
+            env[k] = re.sub(r"^~(?=/|$)", real_home, lenv[k])
+    base_dir = tempfile.mkdtemp(prefix="machina-replay-base-")
+    try:
+        bp = os.path.join(base_dir, "git-guard.sh")
+        with open(bp, "w") as f:
+            f.write(src)
+        t0 = time.perf_counter()
+        results = replay(sessions, bp, os.path.join(ROOT, ".claude/hooks/git-guard.sh"), env, gitconfig)
+        secs = time.perf_counter() - t0
+    finally:
+        shutil.rmtree(base_dir, ignore_errors=True)
+
+    def dist(i):
+        c = {}
+        for x in results:
+            c[x[i]] = c.get(x[i], 0) + 1
+        return ", ".join(f"{k} {c[k]}" for k in sorted(c, key=lambda k: (RANK.get(k, 1), k)))
+
+    tighter, looser = replay_diff(results)
+    if tighter:
+        fail(f"hook 재생: 기준 `{ref}` 대비 신규 차단 {len(tighter)}건 (변화 표 참고)")
+    if looser:
+        warn(f"hook 재생: 기준 `{ref}` 대비 완화 {len(looser)}건 (변화 표 참고)")
+    injected = [k for k in ("MACHINA_EMAIL", "MACHINA_GH", "GH_CONFIG_DIR") if k in env]
+    lines = [title,
+             f"- 소스: transcript 최상위 *.jsonl (subagents 제외) · 재생 {total}건 · 세션 {len(sessions)}개 · 소요 {secs:.1f}s",
+             f"- 신원 재현: ~/.gitconfig {'사본(~ 전개)' if gitconfig is not None else '없음'} · env 주입 {', '.join(injected) or '없음'}",
+             f"- 기준(`{ref}`) 판정: {dist(3)}",
+             f"- 현재 판정: {dist(4)}"]
+    changes = tighter + looser
+    if changes:
+        lines.append("\n| 세션 | 기준 | 현재 | 명령 |\n|---|---|---|---|")
+        for sid, _, cmd, b, c in changes[:30]:
+            short = " ".join(cmd.split())[:120].replace("|", "\\|").replace("`", "'")
+            lines.append(f"| {sid[:8]} | {b} | {c} | `{short}` |")
+        if len(changes) > 30:
+            lines.append(f"\n외 {len(changes) - 30}건")
+    else:
+        lines.append("- 판정 변화 0건")
+    report.append("\n".join(lines))
 
 
 def doctor_tests(sb, env, gh_me):
@@ -429,6 +628,8 @@ def latency_check(ws, env, r, gh_me, base_ref):
         "git-guard.sh:git": ("git-guard.sh", {"tool_input": {"command": "git commit -m x"}, "cwd": r["mine"], "session_id": "lat"}),
         "review-suggest.sh:noop": ("review-suggest.sh", {"tool_input": {"file_path": os.path.join(ws, "mine/README.md")}, "session_id": "lat"}),
         "review-suggest.sh:hit": ("review-suggest.sh", lambda i: {"tool_input": {"file_path": os.path.join(ws, "mine/A.swift")}, "session_id": f"lat-hit-{i}"}),
+        "qabot-guard.sh:noop": ("qabot-guard.sh", {"tool_input": {"file_path": os.path.join(ws, "mine/A.swift")}, "session_id": "lat"}),
+        "qabot-guard.sh:deny": ("qabot-guard.sh", {"tool_input": {"file_path": os.path.join(ws, "mine/A.swift")}, "agent_type": "qabot", "session_id": "lat"}),
     }
     base_dir = tempfile.mkdtemp(prefix="machina-base-") if base_ref else None
     lim, ratio, rows = BUDGET["hook_latency_ms_median"], BUDGET["latency_regression_ratio"], []
@@ -457,6 +658,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--base")
     ap.add_argument("--summary")
+    ap.add_argument("--replay", action="store_true")
+    ap.add_argument("--replay-dir")
     a = ap.parse_args()
     base = a.base if a.base and git_show(a.base, "CLAUDE.md") is not None else None
     if a.base and not base:
@@ -474,6 +677,9 @@ def main():
         doctor_tests(sb, env, gh_me)
     finally:
         shutil.rmtree(sb, ignore_errors=True)
+    if a.replay:
+        # transcript 디렉토리 = ~/.claude/projects/<워크스페이스 절대경로의 '/'를 '-'로>
+        replay_check(base, a.replay_dir or os.path.join(os.path.expanduser("~"), ".claude", "projects", re.sub(r"[^A-Za-z0-9]", "-", ROOT)))
 
     head = f"## my-machina harness CI — {'❌ 실패 ' + str(len(failures)) + '건' if failures else '✅ 통과'}"
     if base:

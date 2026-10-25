@@ -24,6 +24,8 @@ disable-model-invocation: true
 - worktree로 옮긴 뒤 첫 git 쓰기에서 git-guard 바인딩 deny가 나면, 전환이 의도된 것인지 사용자에게 확인받고 승인 시에만 그 명령 앞에 `GIT_GUARD_REBIND=1`을 붙인다.
 
 ## 2. 구현 — spec `## 작업`의 risk로 분기
+- 구현·검증은 4단계 리뷰가 없는 것처럼 끝낸다. 리뷰는 남은 실수를 잡는 보험이지, "리뷰가 잡겠지"로 기준을 낮추는 근거가 아니다.
+- risk가 비어 있으면 MECHANICAL로 간주하지 않고 RISKY로 취급한다.
 - **MECHANICAL**: 메인이 직접 구현.
 - **RISKY 또는 서로 독립인 작업 2개 이상**: `@coder`에 위임. 스펙 상단에 spec.md 경로(+ confirmed intent.md 경로 — 둘 다 구현 전 Read 강제), 해당 작업 번호, `파일:라인` 좌표, 검증 명령을 넣는다. 파급이 크면 `model: "opus"`.
 - spec에 없는 결정 갈림길을 만나면 멈추고 묻는다(AskUserQuestion 1회). 범위 확장 금지 — 범위 밖 발견은 `.specs/findings.md`.
@@ -39,7 +41,7 @@ disable-model-invocation: true
 - diff가 30줄을 넘거나 로직 분기·상태·동시성·외부 계약이 바뀌었으면 내장 `code-review` 스킬을 Skill tool로 로드한다. 작성자(메인/coder)의 자기 평가는 리뷰를 대신하지 못한다.
 - 규모와 무관하게 추가: 하네스 파일(CLAUDE.md·`.claude/`) 변경 → `@harco` / 셸 호출·권한 승인·IPC(소켓·포트)·민감 데이터(transcript·토큰)·배포 스크립트를 건드림 → 내장 `security-review`(diff 단위), 새 진입점이 생겼으면 `@secuman`(위협 모델 감사).
 - intent가 있으면 결과물을 Proposed outcome(빠진 항목)·Non-goals(넘어간 범위)와 대조한다 — 어긋나면 리뷰 지적과 같이 취급.
-- 확정된 지적은 반영 후 3단계 재실행.
+- 확정된 지적은 반영 후 3단계 재실행. 반영한 CRITICAL·WARNING은 `<project>/.specs/defects.md`에 1줄 append(오탐으로 폐기한 건 제외): `YYYY-MM-DD | <slug> | 심각도 | 실패 메커니즘 | 파일 | 요약 (발견:review)` — ship 4단계 환류의 입력.
 
 ## 5. 종료 보고
 - spec `status: implemented`, `## 결과`에 검증 명령→exit code·미검증 항목을 기록.

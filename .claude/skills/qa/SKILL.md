@@ -12,7 +12,7 @@ disable-model-invocation: true
 ## QA 자산 — `<project>/.specs/qa/` (git 미추적)
 | 파일 | 내용 | 갱신 |
 |---|---|---|
-| `recipe.md` | 실행·관찰 레시피: 빌드·실행·종료 명령, 관찰 수단(snapshot·로그·파일·MCP), 사용자 데이터 위치와 보호 규칙, 알려진 함정, 시나리오 목록 | 메인만 (qabot은 읽기 전용) |
+| `recipe.md` | 실행·관찰 레시피: 빌드·실행·종료 명령, 관찰 수단(snapshot·로그·파일·MCP), 사용자 데이터 위치와 보호 규칙, 알려진 함정, 시나리오 매핑 표(`경로 패턴(grep -E)` → `scenarios/<영역>.md`) | 메인만 (qabot은 읽기 전용) |
 | `scenarios/<영역>.md` | 박제 시나리오: 전제 → Steps → 확인 포인트 | 메인만 |
 | `reports/<YYYY-MM-DD>-<slug>.md` | qabot 리포트 | qabot |
 
@@ -22,7 +22,7 @@ disable-model-invocation: true
 2. **레시피 확인**: `recipe.md`가 없으면(첫 QA) 메인이 프로젝트 README·빌드 스크립트·auto-memory 해당 항목에서 초안을 써서 위임 스펙과 함께 보여준다(4단계 허가 질문에서 같이 승인). 추측한 명령은 `미확인`으로 표기.
 3. **위임 스펙 조립** (빠짐없이)
    - spec 경로 · 수정 요약(3줄) · `[run]` 확인 포인트 원문
-   - `recipe.md` 경로 + 매칭되는 `scenarios/<영역>.md`(있으면 즉흥 설계보다 우선)
+   - `recipe.md` 경로 + 매칭되는 `scenarios/<영역>.md`(있으면 즉흥 설계보다 우선). 매칭 = 이번 변경 파일(`git -C <repo> diff --name-only` + untracked)을 recipe 매핑 표의 패턴과 대조. 새 시나리오를 박제할 때는 매핑 행도 같이 추가한다.
    - **실행 영향**: 사용자가 이미 띄워 둔 인스턴스를 종료·재시작해야 하는지, 실데이터(예: 앱의 `~/.<app>` 저장소)를 건드리는지. 건드린다면 백업·원복 방법을 명시한다 — 스펙에 없는 상태 변경은 qabot이 하지 않는다.
    - 리포트 경로: `<project>/.specs/qa/reports/<YYYY-MM-DD>-<slug>.md`(날짜는 `date +%F`)
 4. **허가**: 조립한 스펙 요약(+레시피 초안)을 보여주고 AskUserQuestion 1회 — 옵션 `실행` / `수정 후 실행` / `보류`. 허가 없이 스폰하지 않는다.
@@ -36,7 +36,7 @@ disable-model-invocation: true
    - 실행·관찰 방법, 전제조건, BLOCKED 재발 방지 조치 → `recipe.md`
    - 같은 영역 2회째 QA → `scenarios/<영역>.md` 박제 제안
    - qabot 조작 함정(2회 이상 반복) → 하네스 `.claude/agents/qabot.md` (my-machina repo 커밋 대상)
-   - 리뷰를 통과한 코드 결함을 QA가 잡았으면 → `.specs/findings.md`에 `발견:qa`로 한 줄
+   - 리뷰를 통과한 코드 결함을 QA가 잡았으면 → `.specs/defects.md`에 go 4단계 형식으로 `발견:qa` 한 줄(ship 4단계 환류의 입력)
 
 ## DO NOT
 ❌ 메인이 앱 실행·조작을 직접 수행 ❌ 허가 없이 스폰 ❌ 근거 없는 ✅ 수용 ❌ ❌항목 자동 수정 ❌ 스펙에 없는 실데이터 변경 허용
