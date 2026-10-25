@@ -26,7 +26,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Artifact|ArtifactComments|ArtifactData",
         "hooks": [
           {
             "type": "command",

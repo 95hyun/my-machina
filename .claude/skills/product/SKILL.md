@@ -48,6 +48,7 @@ disable-model-invocation: true
 1. 대상: 인자의 첫 단어가 워크스페이스의 기존 프로젝트면 그 repo. 아니면 새 제품 — 인자에서 짧은 영문 kebab 이름을 만들어 `<workspace>/<name>/`을 만들고 `git init`, `.specs/`를 `.git/info/exclude`에 등록한다(remote는 만들지 않는다. 이름은 게이트①에서 바꿀 수 있다). slug = 제품 이름.
 2. `<project>/.specs/<slug>/review-log.md`가 있으면 **재개**: 마지막 줄의 단계부터 이어간다. 이름 붙인 pm·pd가 이미 없으면 다시 띄우고 해당 산출물을 Read하게 한다.
 3. PO 발화 원문 목록을 만든다(이번 요청과 이전 대화의 관련 발화, 요약 금지). 모든 역할 프롬프트에 그대로 넣는다.
+4. **디자인 도구 모드**: `echo "${MACHINA_PD_ARTIFACT:-0}"`가 `1`이면 Artifact 모드(개인 Claude 계정에서 사용자가 켠 경우), 아니면 로컬 모드. pd·pm 프롬프트에 모드를 적는다. 꺼져 있을 때 pd·pm의 Artifact 호출은 role-guard가 막는다.
 
 ## A. 기획 → 게이트①
 1. `Agent(subagent_type: "pm", name: "pm-<slug>")`: PO 발화 원문, intent 양식 경로(`.claude/skills/ready/intent-template.md`), 출력 경로, 기존 프로젝트면 README·CLAUDE.md·`docs/decisions.md` 경로.
@@ -59,20 +60,21 @@ disable-model-invocation: true
    - 승인 → intent `status: confirmed`, `updated:` 갱신. 수정 요청 → pm 재작업 후 게이트① 다시(PO 요청은 재작업 상한에 세지 않는다).
 
 ## B. 설계 + spec → 게이트②
-1. pd에 SendMessage: confirmed intent 경로, `.claude/skills/product/design-template.md` 경로, 출력 경로, 기존 프로젝트의 디자인 관례 위치.
-2. 설계 판정(병렬): `verify-pm.md`(design 모드) + PE(메인) 실현성. 기술·형식 지적 → pd 재작업(≤2회).
-3. PE spec: `.claude/skills/ready/SKILL.md`를 Read해 그 절차대로 spec.md를 쓴다(intent·design.md가 입력, 5.5 독립 추측 탐지 포함). 질문·정지 지점은 공통 규칙의 배정 표대로. design의 각 "확인 방법"을 `[run]` 확인 포인트로 옮긴다.
+1. pd에 SendMessage: confirmed intent 경로, `.claude/skills/product/design-template.md` 경로, 출력 경로(`design.md`·`design/`), 도구 모드, 기존 프로젝트의 디자인 관례 위치. PO가 Figma 링크를 줬으면 조율자가 먼저 읽어(Figma MCP 안내문의 사전 절차를 따른다) `design/ref/`에 넣고 그 경로를 넘긴다 — 디자인 정보·메타데이터는 텍스트 그대로, 스크린샷은 조율자가 보고 요점을 `ref/notes.md`에 텍스트로(이미지를 파일로 저장할 수 있으면 함께). Figma는 읽기만.
+   - pd 반환에 `렌더 필요: 예`면 조율자가 `bash .claude/skills/product/render.sh <project>/.specs/<slug>/design`을 실행한다. exit 2(브라우저 없음)·실패는 review-log에 `폴백: render — <사유>`로 남기고 다음 게이트 문항에 1줄 고지한다. **B단계 첫 렌더 직후 한 번만** pd에 SendMessage로 "`render/` 확인 후 어긋난 곳 수정"을 보내고(자기 점검 — 재작업 상한에 세지 않는다, review-log에 `자기점검`), 수정이 있었으면 다시 렌더한 뒤 2번으로 간다.
+2. 설계 판정(병렬): `verify-pm.md`(design 모드, 렌더 경로 포함) + PE(메인) 실현성 — 화면 HTML·프로토타입의 상호작용이 스택으로 구현 가능한가, 비용이 큰 요소. 지적은 `[S2/요소] 지적 — 근거` 형식으로 pd에 SendMessage(≤2회), 재작업 뒤엔 다시 렌더한다.
+3. PE spec: `.claude/skills/ready/SKILL.md`를 Read해 그 절차대로 spec.md를 쓴다(intent·design.md가 입력, 5.5 독립 추측 탐지 포함). 질문·정지 지점은 공통 규칙의 배정 표대로. design의 각 "확인 방법"을 `[run]` 확인 포인트로 옮긴다. UI 작업마다 대응하는 `design/screens/<ID>-*.html`·`tokens.css`를 좌표로 적어 PE·@coder의 구현 기준으로 삼는다.
    - 검증 명령: `CLAUDE.local.md` 프로젝트 맵에 없는 프로젝트(새 제품 등)면 spec에 `제안:`으로 적어 게이트②에서 승인받는다(개인 맵은 직접 쓰지 않고 종료 보고에서 등록을 제안).
    - `[run]` 포인트가 있으면 `<project>/.specs/qa/recipe.md`를 확인한다. 없으면 qa 2단계 기준으로 초안(빌드·실행·종료 명령, 관찰 수단, 실데이터 보호, 추측 명령은 `미확인`)을 쓰고, 있으면 Read해 이번 `[run]`에 필요한 변경분만 만든다(덮어쓰지 않는다). 초안·변경분 모두 게이트②에 제시한다.
-4. spec 판정: `verify-pd.md`(spec 모드). 기술·형식 지적 → 메인이 spec 수정(2번 설계 루프와 합계 ≤2회).
-5. **게이트②** (AskUserQuestion — 4문항 초과 시 연속 묶음): 승인 문항 = 설계 요약(핵심 흐름 + 화면·명령 목록) + spec 요약(작업 수·RISKY 수·확인 포인트 수·검증 명령) + recipe 요약(실행·종료 명령, 실데이터 영향) + 경로 + "이대로 승인 (Recommended)" / "수정 요청". 나머지 = 충돌 목록, spec의 `미결 — 게이트②`, pd의 "PO 결정 필요".
+4. spec 판정: `verify-pd.md`(spec 모드, 화면 ID 기준). 기술·형식 지적 → 메인이 spec 수정(2번 설계 루프와 합계 ≤2회).
+5. **게이트②** (AskUserQuestion — 4문항 초과 시 연속 묶음): 승인 문항 = 설계 요약(핵심 흐름 + 화면 ID 목록 + 렌더 이미지·프로토타입 경로, Artifact 모드면 링크) + spec 요약(작업 수·RISKY 수·확인 포인트 수·검증 명령) + recipe 요약(실행·종료 명령, 실데이터 영향) + 경로 + "이대로 승인 (Recommended)" / "수정 요청". 나머지 = 충돌 목록, spec의 `미결 — 게이트②`, pd의 "PO 결정 필요"(디자인 토큰 취향은 비교 화면 경로와 함께 선택지로), 폴백 고지.
    - 이 승인은 **C단계의 구현과 QA 실행(빌드·실행·관찰)까지 허가**한다고 문항에 명시한다. 실데이터를 바꾸는 QA가 필요하면 그 항목을 별도 문항으로 묻는다.
    - 승인 → 답을 spec·design에 반영하고 `미결 —` 표시를 모두 없앤다(남아 있으면 go 0단계가 구현을 막는다). 수정 요청 → 해당 소유 역할 재작업 후 게이트② 다시.
 
 ## C. 구현·검증 → 게이트③
 1. `.claude/skills/go/SKILL.md`를 Read해 그 절차대로 구현·검증·리뷰한다(0단계 intent 게이트는 이미 confirmed).
 2. `[run]` 포인트가 있으면 `.claude/skills/qa/SKILL.md`를 Read해 그 절차대로 진행한다. 단 4단계 허가 질문은 게이트② 승인으로 대신하고, 위임 스펙 첫 줄은 `허가: /product 게이트② 승인 <YYYY-MM-DD>`로 쓴다.
-3. 결과 판정(병렬): `verify-pd.md`(result 모드) + `verify-pm.md`(result 모드).
+3. 결과 판정(병렬): `verify-pd.md`(result 모드 — QA 스크린샷 ↔ `design/render/<ID>-*.png` 나란히) + `verify-pm.md`(result 모드). 지적은 화면 ID로.
 4. 기술·형식 지적 → 메인이 go 절차로 수정 → `[static]` 전체와 영향받는 `[run]` 재실측 → 같은 판정을 새 인스턴스로(≤2회).
 5. **게이트③ 수락** (AskUserQuestion — 4문항 초과 시 연속 묶음): 성공 기준별 ✅/❌/⛔ 표(근거 경로 포함) + 남은 충돌 목록(보류한 제품 결정 포함) + qa 7 학습 회수 반영안 + "수락 (Recommended)" / "수정 요청" / "보류".
    - 수락 → spec 결과에 기록하고 "확인 후 `/ship`"으로 종료. 이 스킬은 커밋하지 않는다.

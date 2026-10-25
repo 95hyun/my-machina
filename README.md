@@ -241,8 +241,10 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 ### `/product` — 제품 하나를 PM·PD·PE 역할로
 `disable-model-invocation` — `/product`로만 실행. 작은 수정·단건 기능은 `/ready` → `/go`.
 
-- **역할**: PO = 사용자(결정) · PM = `@pm`(intent) · PD = `@pd`(design.md, 화면 없는 제품은 사용 흐름·입출력 설계) · PE = 메인(기존 ready·go·qa 절차, `@coder`) · 판정자 = 매번 새 읽기 전용 Explore(`verify-pm.md`·`verify-pd.md`)
+- **역할**: PO = 사용자(결정) · PM = `@pm`(intent) · PD = `@pd`(design.md + 실제로 열리는 화면 — 로컬 HTML 목업·프로토타입·제품별 디자인 토큰, 화면 없는 제품은 사용 흐름·입출력 설계) · PE = 메인(기존 ready·go·qa 절차, `@coder`) · 판정자 = 매번 새 읽기 전용 Explore(`verify-pm.md`·`verify-pd.md`)
 - **흐름**: A 기획(PM 작성 → PE 실현성·PD 사용자 관점 검토) → **게이트①** → B 설계(PD 작성 → PM 판정·PE 실현성) → PE spec(ready 절차) → PD 판정 → **게이트②**(설계+spec, 구현·QA 실행 허가 포함) → C 구현·QA(go·qa 절차) → PD·PM 결과 판정 → **게이트③ 수락** → `/ship`
+- **디자인 도구**: 기본은 로컬 HTML(`design/screens/S<n>-*.html`·`prototype/`·`tokens.css`)을 `render.sh`(헤드리스 Chrome/Edge, 네트워크 차단·20초 제한·이전 PNG 삭제 후 렌더)로 PNG 렌더링해 PM·판정자가 **화면을 보고** 대조한다. 개인 Claude 계정에서 `MACHINA_PD_ARTIFACT=1`이면 Artifact Design 캔버스·댓글도 쓴다. Figma는 PO가 링크를 주면 조율자가 읽어 `design/ref/`에 넣는다(쓰기 없음, 유료 시트 없이). 추가 비용 0, 회사 디자인 시스템은 쓰지 않는다
+- **화면 단위 소통**: 지적·판정·반영이 모두 화면 ID(`[S2/요소] 지적 — 근거`)로 남는다
 - **재작업 루프**: 지적은 소유 역할이 고치고 새 판정자가 다시 본다. 단계마다 최대 2회, 남은 것은 충돌 목록으로 게이트에
 - **이견**: 기술·형식은 역할끼리, 제품 결정(대상·범위·우선순위·성공 기준·취향)은 게이트에서 PO가
 - **기록·재개**: `review-log.md`에 단계·회차·판정을 남기고, `/product <slug>` 재호출 시 이어 간다
@@ -311,8 +313,9 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 ### `review-suggest.sh` (PostToolUse · Edit|Write|MultiEdit)
 코드(`.swift .rs .ts .py …`)나 하네스 파일이 수정되면 "일단락되면 리뷰하라"는 힌트를 **Claude 컨텍스트에만** 주입한다. 사용자 화면 출력 0, 세션당 프로젝트별 1회.
 
-### `role-guard.sh` (PreToolUse · Write|Edit|MultiEdit|NotebookEdit)
+### `role-guard.sh` (PreToolUse · Write|Edit|MultiEdit|NotebookEdit|Artifact|ArtifactComments|ArtifactData)
 역할 에이전트의 파일 쓰기를 소유 경로로 제한한다 — qabot = `.specs/qa/reports/`, pm = `.specs/<slug>/intent.md`·`research.md`, pd = `.specs/<slug>/design.md`·`design/` (`../` 우회·상대경로 deny). 서브에이전트 호출에만 hook 입력에 `agent_type`이 실려서 메인 세션·다른 에이전트는 무개입. Bash 리다이렉트 쓰기는 보지 않는다 — 명령 문자열에서 쓰기 대상을 안정적으로 판정할 수 없어 에이전트 정의의 금지 규칙으로 둔다(pm·pd는 Bash 도구 자체가 없다).
+또 pm·pd의 Artifact 도구 호출은 `MACHINA_PD_ARTIFACT=1`일 때만 허용한다 — 회사 조직 계정에 개인 제품 디자인이 생기지 않게.
 
 ---
 
@@ -374,6 +377,7 @@ git fetch origin && git checkout -t origin/main
 | 커밋 신원 · SSH 키 | `~/.gitconfig`에 `[includeIf "gitdir:<workspace>/"]` → `user.*`·`core.sshCommand`를 담은 별도 파일 | 워크스페이스 아래 모든 repo (터미널 포함) |
 | gh CLI | 위 `GH_CONFIG_DIR` | 워크스페이스 루트에서 시작한 Claude 세션 |
 | 강제 | 위 `MACHINA_EMAIL`·`MACHINA_GH` → git-guard | 동일 |
+| `/product` Artifact 모드 | `"MACHINA_PD_ARTIFACT": "1"` — PD·PM이 Claude Artifact(Design 캔버스·댓글)를 쓴다. **개인 Claude 계정일 때만** 켠다: 회사·조직 계정은 비공개 Artifact도 조직 Owner가 데이터 내보내기로 접근할 수 있다. 없으면 로컬 HTML 모드 | 동일 (role-guard가 꺼짐일 때 pd·pm의 Artifact 호출 deny) |
 
 `CLAUDE.local.md` (개인 프로젝트 맵 — `/ready`·`/go`가 검증 명령을 여기서 찾는다):
 ```markdown
@@ -456,6 +460,12 @@ GH_CONFIG_DIR=<GH_CONFIG_DIR 경로> gh auth status   # MACHINA_GH 계정
 
 ### 결정 기록
 
+#### 2026-10-25 PD 디자인 도구 — 로컬 HTML + 렌더 대조
+- **기본 = 로컬 HTML 목업·프로토타입 + 헤드리스 렌더 PNG**: 추가 비용 0이고 판정자(읽기 전용 Explore)도 로컬 파일·이미지를 Read할 수 있다. 렌더는 조율자가 한다 — pd에 Bash를 주면 role-guard가 쓰기 경로를 판정할 수 없다.
+- **Artifact는 개인 Claude 계정에서만(`MACHINA_PD_ARTIFACT=1`)**: 회사·조직 계정은 비공개 Artifact도 조직 Owner가 데이터 내보내기로 접근할 수 있어 기본 꺼짐, role-guard로 강제.
+- **Figma는 읽기만, 조율자가 대신 읽음**: 유료 시트 없이 쓰기 불가 + 연결된 계정이 회사 이메일. pd tools에서 뺀 이유는 Figma MCP의 사전 절차(세션·전용 스킬)를 서브에이전트가 갖추지 못해서.
+- **디자인 토큰은 제품마다 새로**: 계정의 조직 기본 디자인 시스템(회사 것)을 쓰지 않는다. 기각: 개인 공통 DS(첫 구축 비용·제품 차별성 약화).
+
 #### 2026-10-25 `/product` PM·PD·PE 역할 협업
 - **PO는 사용자**: 역할 에이전트는 제품 결정을 "PO 결정 필요"로 올릴 뿐 정하지 않는다. PO 에이전트는 기각 — 그럴듯한 추측이 제품을 결정하게 된다.
 - **협업 = 교차 판정 + 재작업(게이트마다 합계 2회)**: 자유 토론 라운드는 기각 — 같은 모델끼리는 동의로 흐르고 끝이 없다. 판정자는 작성 에이전트와 별개인 읽기 전용 인스턴스.
@@ -476,4 +486,7 @@ GH_CONFIG_DIR=<GH_CONFIG_DIR 경로> gh auth status   # MACHINA_GH 계정
 3. `python3 .claude/ci/harness_ci.py --base HEAD` 통과 — hook 판정을 바꿨으면 케이스부터 추가하고, 로컬에서 `--replay`로 과거 세션 명령을 재생해 새로 막히는 명령이 0건인지 확인(transcript는 이 머신에만 있어 Actions에서는 생략)
 4. `@harco` 리뷰 후 워크스페이스 루트(이 repo)에 커밋 — push하면 GitHub Actions가 같은 CI를 다시 돌린다
 - 함정: settings가 작업 트리의 hook을 직접 가리키므로 **hook 수정은 커밋 전에도 모든 세션에 즉시 적용**된다. 판정을 바꿨으면 다른 세션을 쓰기 전에 3번(`--replay` 포함)부터.
-- 함정: hook 입력의 `agent_type`은 서브에이전트 호출에만 실리고(메인 세션엔 없음), 커스텀 에이전트는 정의 이름 그대로 실린다(2026-10-25 실측: pd의 소유 경로 밖 Write → role-guard deny). 새 에이전트 파일은 세션 도중 추가돼도 에이전트 타입으로 바로 쓸 수 있었다.
+- 함정: hook에서 경로 **제외 규칙**("이 패턴이면 거부")은 같은 경로의 다른 표기(`//`, 대소문자 — APFS는 대소문자 무시)에 뚫린다. 허용은 "맞아야 허용"으로, 제외를 써야 하면 정규화 후 비교하고 우회 케이스를 CI에 넣는다.
+- 함정: hook에서 `IFS=$'\t' read`로 여러 필드를 받으면 빈 필드가 접혀 값이 밀린다(탭은 IFS 공백류). 비공백 구분자(0x1f)를 쓴다.
+- 함정: 대신 실행해 주는 도구(예: `render.sh`의 헤드리스 브라우저)는 권한 없는 역할의 산출물을 실행하므로 그 역할의 우회 경로가 된다 — 네트워크·쓰기 범위를 도구 쪽에서 막는다.
+- 함정: hook 입력의 `agent_type`은 서브에이전트 호출에만 실리고(메인 세션엔 없음), 커스텀 에이전트는 정의 이름 그대로 실린다(2026-10-25 실측: pd의 소유 경로 밖 Write → role-guard deny). 새 에이전트 파일이 세션 도중 에이전트 타입으로 잡히는지는 일정하지 않았다(한 번은 잡히고 한 번은 안 잡힘) — 에이전트를 추가·수정했으면 새 세션에서 확인한다.

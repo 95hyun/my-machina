@@ -387,12 +387,27 @@ def hook_tests(sb, home, ws, env, r, gh_me, gh_corp):
         ("pd → /./ 세그먼트 우회", {"agent_type": "pd", "file_path": sp("app/./design.md")}, "deny"),
         ("메인 세션(agent_type 없음) → 소스", {"file_path": src}, "allow"),
         ("coder → 소스", {"agent_type": "coder", "file_path": src}, "allow"),
+        ("pd → Artifact(env 없음)", {"agent_type": "pd", "tool": "Artifact"}, "deny"),
+        ("pd → ArtifactComments(env 없음)", {"agent_type": "pd", "tool": "ArtifactComments"}, "deny"),
+        ("pm → Artifact(env 없음)", {"agent_type": "pm", "tool": "Artifact"}, "deny"),
+        ("pm → ArtifactComments(env 없음)", {"agent_type": "pm", "tool": "ArtifactComments"}, "deny"),
+        ("pd → Artifact(MACHINA_PD_ARTIFACT=1, 소스 file_path)", {"agent_type": "pd", "tool": "Artifact", "file_path": src, "art": 1}, "allow"),
+        ("qabot → Artifact(env 없음, 무개입)", {"agent_type": "qabot", "tool": "Artifact"}, "allow"),
+        ("메인 세션(agent_type 없음) → Artifact", {"tool": "Artifact"}, "allow"),
+        ("pd → ArtifactData(env 없음)", {"agent_type": "pd", "tool": "ArtifactData"}, "deny"),
+        ("pm → Artifact(MACHINA_PD_ARTIFACT=1)", {"agent_type": "pm", "tool": "Artifact", "art": 1}, "allow"),
+        ("pd → design/render/ 쓰기(조율자 렌더 결과)", {"agent_type": "pd", "file_path": sp("app/design/render/S1-x-mobile.png")}, "deny"),
+        ("pd → design/screens/ 쓰기", {"agent_type": "pd", "file_path": sp("app/design/screens/S1-x.html")}, "allow"),
+        ("pd → design//render/ 우회(// 표기)", {"agent_type": "pd", "file_path": sp("app/design//render/S1.png")}, "deny"),
+        ("pd → design/Render/ 우회(대소문자)", {"agent_type": "pd", "file_path": sp("app/design/Render/S1.png")}, "deny"),
     ]
     for name, c, exp in qcases:
         payload = {"tool_input": {k: c[k] for k in ("file_path", "notebook_path") if k in c}, "session_id": "q1"}
         if "agent_type" in c:
             payload["agent_type"] = c["agent_type"]
-        out, _ = run_hook(qg, payload, henv)
+        if "tool" in c:
+            payload["tool_name"] = c["tool"]
+        out, _ = run_hook(qg, payload, dict(henv, MACHINA_PD_ARTIFACT="1") if c.get("art") else henv)
         got = out.get("permissionDecision", "allow")
         ok = got == exp
         bad += not ok
