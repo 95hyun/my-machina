@@ -52,6 +52,15 @@ def lint():
     hooks = sorted(glob.glob(os.path.join(ROOT, ".claude/hooks/*.sh")))
     agent_names = {os.path.splitext(os.path.basename(a))[0] for a in agents}
 
+    # QA 브라우저 경계는 qabot.md tools(허용)와 role-guard 허용 목록 두 곳 — 어긋나면 한쪽만 열린다
+    qb, rg = os.path.join(ROOT, ".claude/agents/qabot.md"), os.path.join(ROOT, ".claude/hooks/role-guard.sh")
+    if os.path.exists(qb) and os.path.exists(rg):
+        q_tools = set(re.findall(r"mcp__playwright__(\w+)", frontmatter(read(qb)).get("tools", "")))
+        m = re.search(r'QA_BROWSER_TOOLS="([^"]*)"', read(rg))
+        r_tools = set(m.group(1).split()) if m else set()
+        if q_tools != r_tools:
+            fail(f"QA 브라우저 도구 불일치: qabot.md만 {sorted(q_tools - r_tools)} / role-guard만 {sorted(r_tools - q_tools)}")
+
     for p in skills:
         d = frontmatter(read(p)) or {}
         name = os.path.basename(os.path.dirname(p))
@@ -109,7 +118,7 @@ def lint():
     for p in docs:
         text = read(p)
         # @에이전트 언급 실존 (이메일·패키지 스코프 제외)
-        for m in re.finditer(r"(?<![\w.])@([a-z][a-z0-9-]+)", text):
+        for m in re.finditer(r"(?<![\w.])@([a-z][a-z0-9-]+)(?![\w/-])", text):
             if m.group(1) not in agent_names:
                 fail(f"{rel(p)}: 없는 에이전트 @{m.group(1)} 참조")
         # hook 주입 태그는 실제로 어떤 hook이 주입해야 한다
@@ -391,14 +400,43 @@ def hook_tests(sb, home, ws, env, r, gh_me, gh_corp):
         ("pd → design/screens/ 쓰기", {"agent_type": "pd", "file_path": sp("app/design/screens/S1-x.html")}, "allow"),
         ("pd → design//render/ 우회(// 표기)", {"agent_type": "pd", "file_path": sp("app/design//render/S1.png")}, "deny"),
         ("pd → design/Render/ 우회(대소문자)", {"agent_type": "pd", "file_path": sp("app/design/Render/S1.png")}, "deny"),
+        ("메인 세션(agent_type 없음) → 브라우저 navigate", {"tool": "mcp__playwright__browser_navigate"}, "deny"),
+        ("pd → 브라우저 navigate", {"agent_type": "pd", "tool": "mcp__playwright__browser_navigate"}, "deny"),
+        ("coder → 브라우저 snapshot", {"agent_type": "coder", "tool": "mcp__playwright__browser_snapshot"}, "deny"),
+        ("qabot → 브라우저 navigate", {"agent_type": "qabot", "tool": "mcp__playwright__browser_navigate"}, "allow"),
+        ("qabot → 브라우저 take_screenshot", {"agent_type": "qabot", "tool": "mcp__playwright__browser_take_screenshot"}, "allow"),
+        ("qabot → 브라우저 evaluate(임의 JS)", {"agent_type": "qabot", "tool": "mcp__playwright__browser_evaluate"}, "deny"),
+        ("qabot → 브라우저 run_code_unsafe(임의 JS)", {"agent_type": "qabot", "tool": "mcp__playwright__browser_run_code_unsafe"}, "deny"),
+        ("qabot → 브라우저 file_upload(로컬 파일)", {"agent_type": "qabot", "tool": "mcp__playwright__browser_file_upload"}, "deny"),
+        ("qabot → 브라우저 drop(로컬 파일)", {"agent_type": "qabot", "tool": "mcp__playwright__browser_drop"}, "deny"),
+        ("qabot → 브라우저 snapshot filename=hook 경로(쓰기 우회)", {"agent_type": "qabot", "tool": "mcp__playwright__browser_snapshot", "filename": ".claude/hooks/x.sh"}, "deny"),
+        ("qabot → 브라우저 screenshot filename=../ 경로", {"agent_type": "qabot", "tool": "mcp__playwright__browser_take_screenshot", "filename": "../x.png"}, "deny"),
+        ("qabot → 브라우저 navigate localhost", {"agent_type": "qabot", "tool": "mcp__playwright__browser_navigate", "url": "http://localhost:3000/a"}, "allow"),
+        ("qabot → 브라우저 navigate 외부(허용 호스트 아님)", {"agent_type": "qabot", "tool": "mcp__playwright__browser_navigate", "url": "https://example.com/"}, "deny"),
+        ("qabot → 브라우저 navigate localhost.evil(접두 위장)", {"agent_type": "qabot", "tool": "mcp__playwright__browser_navigate", "url": "http://localhost.evil.com/"}, "deny"),
+        ("qabot → 브라우저 tabs new 외부 url", {"agent_type": "qabot", "tool": "mcp__playwright__browser_tabs", "url": "https://example.com/"}, "deny"),
+        ("qabot → 허용 목록 밖 도구(WebMCP 등)", {"agent_type": "qabot", "tool": "mcp__playwright__page_registered_tool"}, "deny"),
+        ("qabot → filename 앞 줄바꿈 우회(\\n/../)", {"agent_type": "qabot", "tool": "mcp__playwright__browser_snapshot", "filename": "\n/../.claude/hooks/x.sh"}, "deny"),
+        ("qabot → url 줄바꿈 우회(localhost\\n.example.com)", {"agent_type": "qabot", "tool": "mcp__playwright__browser_navigate", "url": "http://localhost\n.example.com/"}, "deny"),
+        ("pm → file_path 줄바꿈 우회", {"agent_type": "pm", "file_path": "/x/.specs/s/intent.md\n/../../y/.claude/hooks/a.sh"}, "deny"),
+        ("qabot → navigate 허용 호스트(MACHINA_QA_HOSTS)", {"agent_type": "qabot", "tool": "mcp__playwright__browser_navigate", "url": "https://app-preview.example.dev/login", "qahosts": "app-preview.example.dev, other.dev"}, "allow"),
+        ("qabot → navigate 허용 호스트 위장(userinfo@)", {"agent_type": "qabot", "tool": "mcp__playwright__browser_navigate", "url": "https://app-preview.example.dev@evil.com/", "qahosts": "app-preview.example.dev"}, "deny"),
+        ("qabot → navigate localhost userinfo 위장(localhost:80@evil)", {"agent_type": "qabot", "tool": "mcp__playwright__browser_navigate", "url": "http://localhost:80@evil.com/"}, "deny"),
+        ("qabot → navigate 127.0.0.1:@evil 위장", {"agent_type": "qabot", "tool": "mcp__playwright__browser_navigate", "url": "http://127.0.0.1:@evil.com/"}, "deny"),
+        ("qabot → navigate localhost:포트 경로", {"agent_type": "qabot", "tool": "mcp__playwright__browser_navigate", "url": "http://127.0.0.1:8799/a?b"}, "allow"),
+        ("qabot → navigate file: 스킴", {"agent_type": "qabot", "tool": "mcp__playwright__browser_navigate", "url": "file:///etc/hosts"}, "deny"),
+        ("qabot → filename 배열(문자열 아님)", {"agent_type": "qabot", "tool": "mcp__playwright__browser_snapshot", "filename": ["a"]}, "deny"),
     ]
     for name, c, exp in qcases:
-        payload = {"tool_input": {k: c[k] for k in ("file_path", "notebook_path") if k in c}, "session_id": "q1"}
+        payload = {"tool_input": {k: c[k] for k in ("file_path", "notebook_path", "filename", "url") if k in c}, "session_id": "q1"}
         if "agent_type" in c:
             payload["agent_type"] = c["agent_type"]
         if "tool" in c:
             payload["tool_name"] = c["tool"]
-        out, _ = run_hook(qg, payload, dict(henv, MACHINA_PD_ARTIFACT="1") if c.get("art") else henv)
+        cenv = dict(henv, MACHINA_PD_ARTIFACT="1") if c.get("art") else dict(henv)
+        if "qahosts" in c:
+            cenv["MACHINA_QA_HOSTS"] = c["qahosts"]
+        out, _ = run_hook(qg, payload, cenv)
         got = out.get("permissionDecision", "allow")
         ok = got == exp
         bad += not ok

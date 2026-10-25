@@ -17,6 +17,7 @@ disable-model-invocation: true
 | PD | `@pd` (이름 붙여 세션 내내 유지) | `design.md`, `design/` |
 | PE | 메인 — 기존 ready·go·qa 절차 그대로, 구현 위임은 `@coder` | `spec.md`, 코드 |
 | 판정자 | 매번 새 `Explore`(`model: "opus"`) + `verify-pm.md`·`verify-pd.md` | 없음(읽기 전용) |
+| 조사 | `@researcher`(sonnet, 웹 검색만) — 조율자가 주제별로 띄움 | 없음(텍스트 반환 → pm이 `research.md`) |
 
 쓰기 범위는 `role-guard.sh` hook이 강제한다(pm·pd·qabot은 소유 경로 밖 쓰기 deny).
 
@@ -51,6 +52,7 @@ disable-model-invocation: true
 4. **디자인 도구 모드**: `echo "${MACHINA_PD_ARTIFACT:-0}"`가 `1`이면 Artifact 모드(개인 Claude 계정에서 사용자가 켠 경우), 아니면 로컬 모드. pd·pm 프롬프트에 모드를 적는다. 꺼져 있을 때 pd·pm의 Artifact 호출은 role-guard가 막는다.
 
 ## A. 기획 → 게이트①
+0. 조사(선택): PO 발화에서 조사가 필요한 주제(경쟁 서비스·대상 사용자 관례·기술 제약)를 최대 3개 뽑아 `Agent(subagent_type: "researcher")`를 주제마다 **병렬로** 띄운다. 프롬프트 = 주제 1개 + 제품 한 줄 설명. 주제가 없거나 단순한 제품이면 건너뛴다(구독 사용량). 결과는 1단계 pm 프롬프트에 원문으로 넣는다. 하위 에이전트가 하위 에이전트를 띄울 수 없어 조사는 조율자가 띄운다.
 1. `Agent(subagent_type: "pm", name: "pm-<slug>")`: PO 발화 원문, intent 양식 경로(`.claude/skills/ready/intent-template.md`), 출력 경로, 기존 프로젝트면 README·CLAUDE.md·`docs/decisions.md` 경로.
 2. 검토(병렬):
    - PE(메인): 실현성·비용 — 성공 기준이 증거로 판정 가능한가, 스택·플랫폼 제약, 큰 비용 항목.
@@ -61,8 +63,8 @@ disable-model-invocation: true
 
 ## B. 설계 + spec → 게이트②
 1. pd에 SendMessage: confirmed intent 경로, `.claude/skills/product/design-template.md` 경로, 출력 경로(`design.md`·`design/`), 도구 모드, 기존 프로젝트의 디자인 관례 위치. PO가 Figma 링크를 줬으면 조율자가 먼저 읽어(Figma MCP 안내문의 사전 절차를 따른다) `design/ref/`에 넣고 그 경로를 넘긴다 — 디자인 정보·메타데이터는 텍스트 그대로, 스크린샷은 조율자가 보고 요점을 `ref/notes.md`에 텍스트로(이미지를 파일로 저장할 수 있으면 함께). Figma는 읽기만.
-   - pd 반환에 `렌더 필요: 예`면 조율자가 `bash .claude/skills/product/render.sh <project>/.specs/<slug>/design`을 실행한다. exit 2(브라우저 없음)·실패는 review-log에 `폴백: render — <사유>`로 남기고 다음 게이트 문항에 1줄 고지한다. **B단계 첫 렌더 직후 한 번만** pd에 SendMessage로 "`render/` 확인 후 어긋난 곳 수정"을 보내고(자기 점검 — 재작업 상한에 세지 않는다, review-log에 `자기점검`), 수정이 있었으면 다시 렌더한 뒤 2번으로 간다.
-2. 설계 판정(병렬): `verify-pm.md`(design 모드, 렌더 경로 포함) + PE(메인) 실현성 — 화면 HTML·프로토타입의 상호작용이 스택으로 구현 가능한가, 비용이 큰 요소. 지적은 `[S2/요소] 지적 — 근거` 형식으로 pd에 SendMessage(≤2회), 재작업 뒤엔 다시 렌더한다.
+   - pd 반환에 `렌더 필요: 예`면 조율자가 `bash .claude/skills/product/render.sh <project>/.specs/<slug>/design`을, 이어서 `node .claude/skills/product/a11y-check.mjs <같은 경로>`(대비·터치 영역·폭별 넘침 → `render/a11y.json`)를 실행한다. exit 2(브라우저 없음)·실패는 review-log에 `폴백: render — <사유>`로 남기고 다음 게이트 문항에 1줄 고지한다. **B단계 첫 렌더 직후 한 번만** pd에 SendMessage로 "`render/` 확인 후 어긋난 곳 수정 + `render/a11y.json` 위반 수정(`판정불가`는 렌더 이미지로 직접 확인)"을 보내고(자기 점검 — 재작업 상한에 세지 않는다, review-log에 `자기점검`), 수정이 있었으면 다시 렌더·a11y 점검한 뒤 2번으로 간다.
+2. 설계 판정(병렬): `verify-pm.md`(design 모드, 렌더 경로 포함) + PE(메인) 실현성 — 화면 HTML·프로토타입의 상호작용이 스택으로 구현 가능한가, 비용이 큰 요소. 지적은 `[S2/요소] 지적 — 근거` 형식으로 pd에 SendMessage(≤2회), 재작업 뒤엔 다시 렌더·a11y 점검한다. 남은 a11y 위반은 PE가 기술·형식 지적으로 함께 넘긴다.
 3. PE spec: `.claude/skills/ready/SKILL.md`를 Read해 그 절차대로 spec.md를 쓴다(intent·design.md가 입력, 5.5 독립 추측 탐지 포함). 질문·정지 지점은 공통 규칙의 배정 표대로. design의 각 "확인 방법"을 `[run]` 확인 포인트로 옮긴다. UI 작업마다 대응하는 `design/screens/<ID>-*.html`·`tokens.css`를 좌표로 적어 PE·@coder의 구현 기준으로 삼는다.
    - 검증 명령: `CLAUDE.local.md` 프로젝트 맵에 없는 프로젝트(새 제품 등)면 spec에 `제안:`으로 적어 게이트②에서 승인받는다(개인 맵은 직접 쓰지 않고 종료 보고에서 등록을 제안).
    - `[run]` 포인트가 있으면 `<project>/.specs/qa/recipe.md`를 확인한다. 없으면 qa 2단계 기준으로 초안(빌드·실행·종료 명령, 관찰 수단, 실데이터 보호, 추측 명령은 `미확인`)을 쓰고, 있으면 Read해 이번 `[run]`에 필요한 변경분만 만든다(덮어쓰지 않는다). 초안·변경분 모두 게이트②에 제시한다.

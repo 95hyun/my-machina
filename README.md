@@ -157,7 +157,7 @@ flowchart LR
     ├── skills/{ready,go,qa,ship,doctor}/          개발 루프 + 클론 진단
     ├── skills/product/                          PM·PD·PE 역할 협업(제품 하나 단위)
     ├── agents/{coder,qabot,harco,secuman}.md
-    ├── agents/{pm,pd}.md                        /product 전용(스킬만 호출)
+    ├── agents/{pm,pd,researcher}.md             /product 전용(스킬만 호출)
     ├── hooks/{git-guard,review-suggest,role-guard}.sh
     └── ci/{harness_ci.py,budget.json}   하네스 CI
 .github/workflows/harness-ci.yml        push마다 macOS에서 CI
@@ -240,7 +240,8 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 
 - **역할**: PO = 사용자(결정) · PM = `@pm`(intent) · PD = `@pd`(design.md + 실제로 열리는 화면 — 로컬 HTML 목업·프로토타입·제품별 디자인 토큰, 화면 없는 제품은 사용 흐름·입출력 설계) · PE = 메인(기존 ready·go·qa 절차, `@coder`) · 판정자 = 매번 새 읽기 전용 Explore(`verify-pm.md`·`verify-pd.md`)
 - **흐름**: A 기획(PM 작성 → PE 실현성·PD 사용자 관점 검토) → **게이트①** → B 설계(PD 작성 → PM 판정·PE 실현성) → PE spec(ready 절차) → PD 판정 → **게이트②**(설계+spec, 구현·QA 실행 허가 포함) → C 구현·QA(go·qa 절차) → PD·PM 결과 판정 → **게이트③ 수락** → `/ship`
-- **디자인 도구**: 기본은 로컬 HTML(`design/screens/S<n>-*.html`·`prototype/`·`tokens.css`)을 `render.sh`(헤드리스 Chrome/Edge, 네트워크 차단·20초 제한·이전 PNG 삭제 후 렌더)로 PNG 렌더링해 PM·판정자가 **화면을 보고** 대조한다. 개인 Claude 계정에서 `MACHINA_PD_ARTIFACT=1`이면 Artifact Design 캔버스·댓글도 쓴다. Figma는 PO가 링크를 주면 조율자가 읽어 `design/ref/`에 넣는다(쓰기 없음, 유료 시트 없이). 추가 비용 0, 회사 디자인 시스템은 쓰지 않는다
+- **디자인 도구**: 기본은 로컬 HTML(`design/screens/S<n>-*.html`·`prototype/`·`tokens.css`)을 `render.sh`(헤드리스 Chrome/Edge, 네트워크 차단·20초 제한·이전 PNG 삭제 후 렌더)로 PNG 렌더링해 PM·판정자가 **화면을 보고** 대조한다. 개인 Claude 계정에서 `MACHINA_PD_ARTIFACT=1`이면 Artifact Design 캔버스·댓글도 쓴다. Figma는 PO가 링크를 주면 조율자가 읽어 `design/ref/`에 넣는다(쓰기 없음, 유료 시트 없이). 렌더 뒤 `a11y-check.mjs`(의존성 0 — Node 내장 WebSocket으로 Chrome 제어)가 글자 대비(WCAG AA)·터치 영역(44px)·폭 320/390/768/1280 가로 넘침을 `render/a11y.json`으로 남긴다. 추가 비용 0, 회사 디자인 시스템은 쓰지 않는다
+- **조사**: A단계에서 조율자가 `@researcher`를 주제별 병렬로 띄워 PM에게 출처째 넘긴다
 - **웹 접근**: `WebSearch`는 허용 목록, `WebFetch`는 승인제 — 외부 페이지에 심긴 지시(프롬프트 인젝션)가 로컬 개인값을 fetch URL로 내보내는 경로를 사람이 한 번 보게 한다
 - **화면 단위 소통**: 지적·판정·반영이 모두 화면 ID(`[S2/요소] 지적 — 근거`)로 남는다
 - **재작업 루프**: 지적은 소유 역할이 고치고 새 판정자가 다시 본다. 단계마다 최대 2회, 남은 것은 충돌 목록으로 게이트에
@@ -266,6 +267,7 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 - 소스 수정·소스 Read·git 금지(Edit 도구 없음), Write는 리포트 경로만
 - 속도 규약: 서술 턴 금지 · 독립 호출 병렬 · 스크린샷 되읽기 최대 2장 · 포인트당 도구 15회 상한 · 2~3회 막히면 `⛔ BLOCKED + 질문`
 - 재현 불가(음성·하드웨어·1초 미만 타이밍)는 시도 없이 `⛔ 미확인(도구 제약)`
+- 웹 제품은 Playwright MCP 브라우저(`.mcp.json`, 버전 고정 · 설치된 Chrome · 헤드리스 · 매번 빈 프로필)로 조작·관찰한다. 페이지 안 임의 JS 실행·파일 업로드 도구는 빠져 있고, 브라우저 도구는 qabot만 쓸 수 있다(hook). 근거 = `.claude/tmp/qa-browser/`의 스크린샷·스냅샷
 
 ### `@harco` — 하네스 리뷰어 (opus, read-only)
 두 층으로 리뷰한다. **기계 층**은 하네스 CI(아래 [하네스 CI](#하네스-ci))로 성능 회귀를 숫자로 판정하고, **판단 층**은 하네스가 비대해질 때의 진짜 문제(토큰보다 **이중 체계 충돌과 주의력 희석**)를 본다. 하네스 파일을 고치면 review-suggest hook이 호출을 환기한다.
@@ -278,6 +280,10 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 - 이름 붙여 세션 내내 유지하고 재작업은 SendMessage로 — 맥락이 쌓인다
 - 소유 산출물 밖은 쓰지 못한다(`role-guard.sh`). 제품 결정은 "PO 결정 필요"로 돌려줄 뿐 스스로 정하지 않는다
 - 자기 산출물은 판정하지 않는다 — 판정은 별개 Explore 인스턴스
+
+### `@researcher` — /product 조사 (sonnet, 스킬만 호출)
+- 도구는 WebSearch 하나 — 범용 에이전트처럼 claude.ai 커넥터(회사 계정일 수 있음)를 물려받지 않게 정의로 좁혔다
+- 조율자가 주제(경쟁·사용자 관례·기술 제약)별로 최대 3개 병렬로 띄우고(하위 에이전트는 하위 에이전트를 못 띄운다), 출처 URL 붙은 텍스트를 반환 → pm이 `research.md`로 정리
 
 ### `@secuman` — 보안 감사 (opus, read-only)
 웹 OWASP가 아니라 **"내 맥에서 도는 도구"의 위협 모델**. diff 단위는 내장 `security-review`, 전체 감사·위협 모델 점검은 `@secuman`.
@@ -311,9 +317,10 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 ### `review-suggest.sh` (PostToolUse · Edit|Write|MultiEdit)
 코드(`.swift .rs .ts .py …`)나 하네스 파일이 수정되면 "일단락되면 리뷰하라"는 힌트를 **Claude 컨텍스트에만** 주입한다. 사용자 화면 출력 0, 세션당 프로젝트별 1회.
 
-### `role-guard.sh` (PreToolUse · Write|Edit|MultiEdit|NotebookEdit|Artifact|ArtifactComments|ArtifactData)
+### `role-guard.sh` (PreToolUse · Write|Edit|MultiEdit|NotebookEdit|Artifact|ArtifactComments|ArtifactData|mcp__playwright__.*)
 역할 에이전트의 파일 쓰기를 소유 경로로 제한한다 — qabot = `.specs/qa/reports/`, pm = `.specs/<slug>/intent.md`·`research.md`, pd = `.specs/<slug>/design.md`·`design/` (`../` 우회·상대경로 deny). 서브에이전트 호출에만 hook 입력에 `agent_type`이 실려서 메인 세션·다른 에이전트는 무개입. Bash 리다이렉트 쓰기는 보지 않는다 — 명령 문자열에서 쓰기 대상을 안정적으로 판정할 수 없어 에이전트 정의의 금지 규칙으로 둔다(pm·pd는 Bash 도구 자체가 없다).
 또 pm·pd의 Artifact 도구 호출은 `MACHINA_PD_ARTIFACT=1`일 때만 허용한다 — 회사 조직 계정에 개인 제품 디자인이 생기지 않게.
+QA 브라우저(`mcp__playwright__*`)는 qabot만 쓸 수 있다(메인 세션 포함 나머지 deny — 앱 실행은 /qa 허가제). qabot도 허용 목록 21종(qabot.md tools와 같음 — CI가 일치 검사) 밖은 deny(임의 JS·로컬 파일 전달·페이지가 등록한 도구), 도구의 `filename` 인자는 deny(워크스페이스 아무 곳에나 쓸 수 있어 hook 덮어쓰기로 이어짐 — 실측), localhost와 `MACHINA_QA_HOSTS` 밖으로의 최상위 이동(navigate·새 탭)은 deny(외부 페이지 내용이 qabot 입력이 되는 지점 — ask는 서브에이전트·auto mode에서 사람에게 오지 않고 자동 승인돼(실측) 쓰지 않는다). 앱의 외부 API 요청 자체는 막지 않는다(사용자 결정).
 
 ---
 
@@ -375,6 +382,7 @@ git fetch origin && git checkout -t origin/main
 | 커밋 신원 · SSH 키 | `~/.gitconfig`에 `[includeIf "gitdir:<workspace>/"]` → `user.*`·`core.sshCommand`를 담은 별도 파일 | 워크스페이스 아래 모든 repo (터미널 포함) |
 | gh CLI | 위 `GH_CONFIG_DIR` | 워크스페이스 루트에서 시작한 Claude 세션 |
 | 강제 | 위 `MACHINA_EMAIL`·`MACHINA_GH` → git-guard | 동일 |
+| QA 브라우저 허용 호스트 | `"MACHINA_QA_HOSTS": "my-app-preview.vercel.app"`(공백·쉼표 구분) — 배포된 사이트를 qabot으로 QA할 때만. 없으면 localhost만 | 동일 (role-guard) |
 | `/product` Artifact 모드 | `"MACHINA_PD_ARTIFACT": "1"` — PD·PM이 Claude Artifact(Design 캔버스·댓글)를 쓴다. **개인 Claude 계정일 때만** 켠다: 회사·조직 계정은 비공개 Artifact도 조직 Owner가 데이터 내보내기로 접근할 수 있다. 없으면 로컬 HTML 모드 | 동일 (role-guard가 꺼짐일 때 pd·pm의 Artifact 호출 deny) |
 
 `CLAUDE.local.md` (개인 프로젝트 맵 — `/ready`·`/go`가 검증 명령을 여기서 찾는다):
@@ -397,6 +405,7 @@ git -C <workspace>/<project> config user.email   # MACHINA_EMAIL과 같아야 �
 GH_CONFIG_DIR=<GH_CONFIG_DIR 경로> gh auth status   # MACHINA_GH 계정
 ```
 워크스페이스 루트에서 Claude 세션을 열고 `/doctor`로 클론 상태를 진단한다(터미널에선 `bash .claude/skills/doctor/doctor.sh`). ❌ 항목은 함께 출력되는 해결 명령대로 고친다. `/ready`가 스킬 목록에 보이고, `/go`·`/qa`·`/ship`은 슬래시로만 실행된다.
+웹 제품 QA(qabot 브라우저)를 쓰려면 이 워크스페이스에서 처음 세션을 열 때 프로젝트 MCP 서버 `playwright`(`.mcp.json`) 사용을 승인한다(1회). 첫 실행 때 `npx`가 고정 버전 패키지(`@playwright/mcp@0.0.83` — 하위 의존성 playwright는 알파 빌드로 고정돼 있음)를 내려받는다.
 
 ---
 
@@ -435,6 +444,12 @@ GH_CONFIG_DIR=<GH_CONFIG_DIR 경로> gh auth status   # MACHINA_GH 계정
 
 ### 결정 기록
 
+#### 2026-10-25 역할별 보강 — QA 브라우저·a11y 점검·researcher
+- **QA 브라우저 = Playwright MCP(버전 고정·설치된 Chrome·격리 프로필), qabot 전용**: 대화형 조작이 필요하고 무료. 허용 21종·`filename` 금지·로컬/`MACHINA_QA_HOSTS` 밖 이동 금지를 hook으로 강제. 앱의 외부 API 요청은 허용(사용자 결정). 기각: 프로젝트별 Playwright 스크립트(qabot 쓰기 제한·탐색 불가).
+- **외부 이동은 ask가 아니라 deny + 허용 호스트**: ask가 qabot 실행에서 사람에게 오지 않고 자동 승인됐다(실측).
+- **a11y 점검은 의존성 0(Node 내장 WebSocket + CDP)**: axe-core 설치(공급망·node_modules)를 피함. 자체 대비 계산의 한계는 `undetermined`로 분리.
+- **조사는 전용 `researcher`(WebSearch만)**: general-purpose는 claude.ai 커넥터(회사 계정일 수 있음)를 상속한다. +43B는 사고 방지 비용.
+
 #### 2026-10-25 PD 디자인 도구 — 로컬 HTML + 렌더 대조
 - **기본 = 로컬 HTML 목업·프로토타입 + 헤드리스 렌더 PNG**: 추가 비용 0이고 판정자(읽기 전용 Explore)도 로컬 파일·이미지를 Read할 수 있다. 렌더는 조율자가 한다 — pd에 Bash를 주면 role-guard가 쓰기 경로를 판정할 수 없다.
 - **Artifact는 개인 Claude 계정에서만(`MACHINA_PD_ARTIFACT=1`)**: 회사·조직 계정은 비공개 Artifact도 조직 Owner가 데이터 내보내기로 접근할 수 있어 기본 꺼짐, role-guard로 강제.
@@ -464,4 +479,7 @@ GH_CONFIG_DIR=<GH_CONFIG_DIR 경로> gh auth status   # MACHINA_GH 계정
 - 함정: hook에서 경로 **제외 규칙**("이 패턴이면 거부")은 같은 경로의 다른 표기(`//`, 대소문자 — APFS는 대소문자 무시)에 뚫린다. 허용은 "맞아야 허용"으로, 제외를 써야 하면 정규화 후 비교하고 우회 케이스를 CI에 넣는다.
 - 함정: hook에서 `IFS=$'\t' read`로 여러 필드를 받으면 빈 필드가 접혀 값이 밀린다(탭은 IFS 공백류). 비공백 구분자(0x1f)를 쓴다.
 - 함정: 대신 실행해 주는 도구(예: `render.sh`의 헤드리스 브라우저)는 권한 없는 역할의 산출물을 실행하므로 그 역할의 우회 경로가 된다 — 네트워크·쓰기 범위를 도구 쪽에서 막는다.
+- 함정: hook의 `ask`(사람 확인)는 서브에이전트·auto mode 실행에서 사람에게 오지 않고 자동 승인될 수 있다(실측). 막아야 하는 것은 `deny`로 판정하고 예외는 설정값으로 연다.
+- 함정: hook이 `read`로 입력 값을 받으면 첫 줄바꿈에서 끊겨 뒤를 판정하지 못한다. jq 단계에서 제어문자가 든 값을 표식으로 바꾼 뒤 판정한다(`role-guard.sh`).
+- 함정: MCP 등 외부 도구를 붙일 때는 인자 스키마를 전수 확인한다 — `filename` 같은 부가 인자가 기존 쓰기 가드 밖의 쓰기 경로가 된다(실측: 브라우저 스냅샷으로 hook 파일 덮어쓰기).
 - 함정: hook 입력의 `agent_type`은 서브에이전트 호출에만 실리고(메인 세션엔 없음), 커스텀 에이전트는 정의 이름 그대로 실린다(2026-10-25 실측: pd의 소유 경로 밖 Write → role-guard deny). 새 에이전트 파일이 세션 도중 에이전트 타입으로 잡히는지는 일정하지 않았다(한 번은 잡히고 한 번은 안 잡힘) — 에이전트를 추가·수정했으면 새 세션에서 확인한다.

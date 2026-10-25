@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@0.0.83", "--browser", "chrome", "--headless", "--isolated", "--output-dir", ".claude/tmp/qa-browser", "--output-max-size", "52428800", "--no-webmcp"]
+    }
+  }
+}

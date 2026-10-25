@@ -12,7 +12,7 @@ disable-model-invocation: true
 ## QA 자산 — `<project>/.specs/qa/` (git 미추적)
 | 파일 | 내용 | 갱신 |
 |---|---|---|
-| `recipe.md` | 실행·관찰 레시피: 빌드·실행·종료 명령, 관찰 수단(snapshot·로그·파일·MCP), 사용자 데이터 위치와 보호 규칙, 알려진 함정, 시나리오 매핑 표(`경로 패턴(grep -E)` → `scenarios/<영역>.md`) | 메인만 (qabot은 읽기 전용) |
+| `recipe.md` | 실행·관찰 레시피: 빌드·실행·종료 명령, 관찰 수단(snapshot·로그·파일·MCP — 웹 제품은 로컬 서버 URL·테스트 계정 절차 + qabot의 Playwright 브라우저 도구), 사용자 데이터 위치와 보호 규칙, 알려진 함정, 시나리오 매핑 표(`경로 패턴(grep -E)` → `scenarios/<영역>.md`) | 메인만 (qabot은 읽기 전용) |
 | `scenarios/<영역>.md` | 박제 시나리오: 전제 → Steps → 확인 포인트 | 메인만 |
 | `reports/<YYYY-MM-DD>-<slug>.md` | qabot 리포트 | qabot |
 

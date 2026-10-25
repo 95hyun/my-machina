@@ -43,6 +43,18 @@ else
   line ✅ "도구" "bash·git·jq·python3"
 fi
 have gh || line ⚠️ "도구(gh)" "gh 없음 — gh 계정 검사·PR 작업 불가" "brew install gh"
+# /product 화면 도구(렌더·a11y·QA 브라우저)는 선택 — 없으면 텍스트 대조로 폴백
+BR=; for c in "/Applications/Google Chrome.app" "/Applications/Microsoft Edge.app" "/Applications/Chromium.app"; do [ -d "$c" ] && { BR=1; break; }; done
+{ have google-chrome || have chromium; } && BR=1
+NODEV=$(node -e 'process.stdout.write(String(typeof WebSocket==="function"))' 2>/dev/null)
+if [ -z "$BR" ]; then
+  line ⚠️ "도구(브라우저)" "Chrome·Edge 없음 — /product 렌더·a11y 점검·QA 브라우저 불가(텍스트 대조로 폴백)" "Chrome 설치"
+elif [ "$NODEV" != "true" ]; then
+  line ⚠️ "도구(node)" "node 없음 또는 22 미만(WebSocket 없음) — a11y 점검·QA 브라우저(npx) 불가" "node 22+ 설치"
+else
+  line ✅ "도구(화면)" "Chrome/Edge·node(WebSocket)"
+fi
+[ -f "$ROOT/.mcp.json" ] || line ⚠️ "QA 브라우저" ".mcp.json 없음 — qabot 웹 QA 불가" "git -C \"$ROOT\" checkout .mcp.json"
 
 # ③ 하네스 무결성
 PROB=
