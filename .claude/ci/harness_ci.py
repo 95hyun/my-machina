@@ -123,22 +123,13 @@ def lint():
                     fail(f"{rel(p)}: 템플릿에 없는 상태 '{s}' (정의: {' / '.join(sorted(status_vocab))})")
 
     # 워크스페이스 고정값 누수 (clone 위치 = 워크스페이스 루트)
-    hack = [p for p in glob.glob(os.path.join(ROOT, "hackathon/**/*"), recursive=True) if os.path.isfile(p) and "/runs/" not in p]
     extra = [p for d in (".claude/skills", ".github") for p in glob.glob(os.path.join(ROOT, d, "**/*"), recursive=True)
              if os.path.isfile(p) and p not in skills and "__pycache__" not in p]
-    for p in skills + agents + hooks + hack + extra + [os.path.join(ROOT, f) for f in ("CLAUDE.md", "README.md", ".claude/settings.json")]:
+    for p in skills + agents + hooks + extra + [os.path.join(ROOT, f) for f in ("CLAUDE.md", "README.md", ".claude/settings.json")]:
         if not os.path.exists(p) or rel(p) in BUDGET["path_leak_allow"]:
             continue
         for m in re.finditer(r"/Users/[\w.-]+|~/my-dev", read(p)):
             fail(f"{rel(p)}: 머신 고정 경로 '{m.group(0)}' — $CLAUDE_PROJECT_DIR·<workspace> 표기 사용")
-
-    # 해커톤 스킬·에이전트·규칙이 가리키는 hackathon/ 경로가 실재해야 한다 (runs/ 산출물·<자리표시자> 제외)
-    for p in skills + agents + [os.path.join(ROOT, "hackathon/RULES.md")]:
-        if not os.path.exists(p):
-            continue
-        for m in set(re.findall(r"hackathon/(?:bin|templates)/[\w.-]+|hackathon/RULES\.md", read(p))):
-            if not os.path.exists(os.path.join(ROOT, m)):
-                fail(f"{rel(p)}: 없는 해커톤 경로 '{m}' 참조")
 
 
 # ── 2. 상시 컨텍스트 비용 ────────────────────────────────────────────────────
@@ -594,7 +585,7 @@ def replay_check(base_ref, src_dir):
 
 
 def doctor_tests(sb, env, gh_me):
-    """doctor.sh: 문법 + 샌드박스 워크스페이스(이 repo의 .claude 사본 + 최소 hackathon + 하위 repo 1개)에서 exit code."""
+    """doctor.sh: 문법 + 샌드박스 워크스페이스(이 repo의 .claude 사본 + 하위 repo 1개)에서 exit code."""
     src = os.path.join(ROOT, ".claude/skills/doctor/doctor.sh")
     rows, bad = [], 0
 
@@ -616,16 +607,6 @@ def doctor_tests(sb, env, gh_me):
     # 개인 파일·작업 임시물은 복사하지 않는다 — 새 clone과 같은 조건
     shutil.copytree(os.path.join(ROOT, ".claude"), os.path.join(dws, ".claude"),
                     ignore=shutil.ignore_patterns("settings.local.json", "tmp", "__pycache__"))
-    hk = os.path.join(dws, "hackathon")
-    for d in ("bin", "templates", "runs"):
-        os.makedirs(os.path.join(hk, d))
-    for b in ("newrun", "mark", "ideas", "share"):
-        bp = os.path.join(hk, "bin", b)
-        open(bp, "w").write("#!/bin/bash\n")
-        os.chmod(bp, 0o755)
-    for t in ("input-card", "onepager", "rubric", "final"):
-        open(os.path.join(hk, "templates", f"{t}.md"), "w").write("x\n")
-    open(os.path.join(hk, "RULES.md"), "w").write("x\n")
     sh(["git", "init", "-q", "-b", "main"], dws, env)
     sub = os.path.join(dws, "app")
     os.makedirs(sub)

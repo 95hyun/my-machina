@@ -12,8 +12,5 @@
 !/.claude/hooks/
 !/.claude/ci/
 !/.github/
-!/hackathon/
-/hackathon/runs/*
-!/hackathon/runs/.gitkeep
 
 .DS_Store

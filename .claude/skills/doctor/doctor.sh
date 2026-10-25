@@ -140,26 +140,7 @@ else
 fi
 [ -n "$FILEONLY" ] && line ⚠️ "계정 값 출처" "env에 없고 settings.local.json에만 있음:$FILEONLY — hook은 env만 보므로 터미널 결과와 세션이 다를 수 있음" "워크스페이스 루트 Claude 세션에서 /doctor 로 다시 확인"
 
-# ⑦ 해커톤
-H="$ROOT/hackathon"; HP=
-for b in newrun mark ideas share; do
-  [ -f "$H/bin/$b" ] || { HP="$HP bin/$b 없음;"; continue; }
-  [ -x "$H/bin/$b" ] || HP="$HP bin/$b 실행권한 없음;"
-done
-for t in input-card onepager rubric final; do [ -f "$H/templates/$t.md" ] || HP="$HP templates/$t.md 없음;"; done
-[ -f "$H/RULES.md" ] || HP="$HP RULES.md 없음;"
-if [ ! -d "$H/runs" ]; then HP="$HP runs/ 없음;"
-elif [ ! -w "$H/runs" ]; then HP="$HP runs/ 쓰기 불가;"; fi
-if [ -n "$HP" ]; then
-  FIX="git -C \"$ROOT\" status hackathon 으로 누락 확인(clone이 온전한지)"
-  case "$HP" in *실행권한*) FIX="chmod +x \"$H\"/bin/*; $FIX" ;; esac
-  case "$HP" in *"runs/ 없음"*) FIX="mkdir -p \"$H/runs\"; $FIX" ;; esac
-  line ❌ "해커톤" "${HP# }" "$FIX"
-else
-  line ✅ "해커톤" "bin 4종 실행 가능·templates 4종·RULES.md·runs/ 쓰기 가능"
-fi
-
-# ⑧ 공유자용 누수 — 개인값·$HOME이 추적 파일에 들어갔는지
+# ⑦ 공유자용 누수 — 개인값·$HOME이 추적 파일에 들어갔는지
 if ! have git || ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   line ⚠️ "누수" "git 없음 또는 git repo 아님 — 검사 생략" "git clone 으로 받은 워크스페이스에서 다시 실행"
 else

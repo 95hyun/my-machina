@@ -4,13 +4,7 @@
   },
   "permissions": {
     "allow": [
-      "WebSearch",
-      "Edit(./hackathon/runs/**)",
-      "Bash(./hackathon/bin/newrun:*)",
-      "Bash(./hackathon/bin/mark:*)",
-      "Bash(./hackathon/bin/ideas:*)",
-      "Bash(./hackathon/bin/share:*)",
-      "Bash(ls hackathon/runs/:*)"
+      "WebSearch"
     ]
   },
   "hooks": {

@@ -156,14 +156,11 @@ flowchart LR
     ├── settings.local.json     (gitignore) 개인 env — MACHINA_EMAIL·MACHINA_GH·GH_CONFIG_DIR
     ├── skills/{ready,go,qa,ship,doctor}/          개발 루프 + 클론 진단
     ├── skills/product/                          PM·PD·PE 역할 협업(제품 하나 단위)
-    ├── skills/{topic,problem,deepen,mvp,pitch,share}/  해커톤 파이프라인
     ├── agents/{coder,qabot,harco,secuman}.md
     ├── agents/{pm,pd}.md                        /product 전용(스킬만 호출)
-    ├── agents/hk-{ideator,scout,researcher,redteam,reviewer}.md  해커톤 전용(스킬만 호출)
     ├── hooks/{git-guard,review-suggest,role-guard}.sh
     └── ci/{harness_ci.py,budget.json}   하네스 CI
 .github/workflows/harness-ci.yml        push마다 macOS에서 CI
-hackathon/{RULES.md,bin/,templates/,runs/}  해커톤 규칙·보조 스크립트·양식, runs/는 산출물(gitignore)
 
 <workspace>/<project>/          각자 독립 git repo — 이 repo는 추적하지 않는다
 <workspace>/<project>/.specs/   작업 문서(intent·spec)·findings.md(범위 밖 발견)·defects.md(확정 결함)와 qa/(recipe·scenarios·reports) — 각 repo의 .git/info/exclude로 제외
@@ -244,6 +241,7 @@ Claude Code는 `settings.json`(hook·env)을 **세션을 시작한 디렉토리*
 - **역할**: PO = 사용자(결정) · PM = `@pm`(intent) · PD = `@pd`(design.md + 실제로 열리는 화면 — 로컬 HTML 목업·프로토타입·제품별 디자인 토큰, 화면 없는 제품은 사용 흐름·입출력 설계) · PE = 메인(기존 ready·go·qa 절차, `@coder`) · 판정자 = 매번 새 읽기 전용 Explore(`verify-pm.md`·`verify-pd.md`)
 - **흐름**: A 기획(PM 작성 → PE 실현성·PD 사용자 관점 검토) → **게이트①** → B 설계(PD 작성 → PM 판정·PE 실현성) → PE spec(ready 절차) → PD 판정 → **게이트②**(설계+spec, 구현·QA 실행 허가 포함) → C 구현·QA(go·qa 절차) → PD·PM 결과 판정 → **게이트③ 수락** → `/ship`
 - **디자인 도구**: 기본은 로컬 HTML(`design/screens/S<n>-*.html`·`prototype/`·`tokens.css`)을 `render.sh`(헤드리스 Chrome/Edge, 네트워크 차단·20초 제한·이전 PNG 삭제 후 렌더)로 PNG 렌더링해 PM·판정자가 **화면을 보고** 대조한다. 개인 Claude 계정에서 `MACHINA_PD_ARTIFACT=1`이면 Artifact Design 캔버스·댓글도 쓴다. Figma는 PO가 링크를 주면 조율자가 읽어 `design/ref/`에 넣는다(쓰기 없음, 유료 시트 없이). 추가 비용 0, 회사 디자인 시스템은 쓰지 않는다
+- **웹 접근**: `WebSearch`는 허용 목록, `WebFetch`는 승인제 — 외부 페이지에 심긴 지시(프롬프트 인젝션)가 로컬 개인값을 fetch URL로 내보내는 경로를 사람이 한 번 보게 한다
 - **화면 단위 소통**: 지적·판정·반영이 모두 화면 ID(`[S2/요소] 지적 — 근거`)로 남는다
 - **재작업 루프**: 지적은 소유 역할이 고치고 새 판정자가 다시 본다. 단계마다 최대 2회, 남은 것은 충돌 목록으로 게이트에
 - **이견**: 기술·형식은 역할끼리, 제품 결정(대상·범위·우선순위·성공 기준·취향)은 게이트에서 PO가
@@ -402,30 +400,6 @@ GH_CONFIG_DIR=<GH_CONFIG_DIR 경로> gh auth status   # MACHINA_GH 계정
 
 ---
 
-## 해커톤 파이프라인
-반나절 해커톤 기획용 스킬 묶음. 사람은 회의로 결정하고, 평가·리서치·검증·준비물은 스킬이 만든다. 개발 루프와 같은 워크스페이스 루트 세션에서 돈다.
-**항상 `/topic`부터 시작한다.** `hackathon/runs/CURRENT`가 이전 run(리허설 등)을 가리키면 `/topic`이 "이어가기/새로 만들기"를 묻는다 — 대회에서는 "새로 만들기".
-
-| 단계 | 명령 | 사람이 할 일 | 산출물(`hackathon/runs/<run>/`) |
-|---|---|---|---|
-| 0 | — | `hackathon/templates/input-card.md` 팀 칸·손 시드 채우기(5분) | — |
-| 1 | `/topic <run이름>` + 주제 6개 붙여넣기 | 직감 투표 → 주제 확정 | `01-topics.md` |
-| 2 | `/problem` | 정찰(근거·경쟁·이기는 틈) 붙은 후보를 점수 없이 2~3개 고르기 | `02-candidates.md` `02-scout-*.md` `02-problems.md` |
-| 3 | `/deepen A3 C1` | 최종 1개 확정 | `03-onepager-*.md` `03-redteam.md` `03-compare.md` |
-| 4 | `/mvp` | 독립 리뷰 반영·컷·담당 확정 → 개발 시작 | `04-mvp.md` `04-review.md` (세션별 핸드오프 블록 포함) |
-| 5 | `/pitch`, `/pitch grill` | 스토리 확정, 모의 질의 | `05-pitch.md` |
-| — | `/share` (단계마다 재실행 가능) | 정본 링크·`final.md`를 Discord에 공유 | `final.md`(정본) `share.md`(원본 묶음) |
-
-- 규칙(게이트 앵커링 방지·수치 출처·팀 선정 기준·45분 하드캡)은 `hackathon/RULES.md` — 각 스킬이 시작할 때 읽는다. 해커톤 세션은 `/model opus`로 시작한다(스킬 frontmatter `model: opus`는 호출 턴만 보장).
-- 단계 사이에 `/clear` 해도 된다. 스킬은 대화가 아니라 `hackathon/runs/CURRENT`의 파일을 읽고, 산출물이 있으면 게이트부터 이어간다(다시 만들려면 "다시").
-- `/mvp` 이후 개발자는 이 워크스페이스에 작업 repo를 만들고, 루트 세션에 핸드오프 블록을 붙여 `/ready`로 시작한다.
-- 진행 시간: `hackathon/runs/<run>/timing.log`. 비용: `/cost`.
-- WebSearch는 허용, WebFetch는 일부러 허용 목록에서 뺐다 — 리서치가 읽는 외부 페이지의 프롬프트 인젝션이 로컬 개인값을 무승인 fetch로 내보내는 경로를 막기 위해서. 리서치 중 fetch 승인 프롬프트가 뜨면 URL을 보고 승인한다.
-- 토큰($500/인): 서브에이전트는 `/problem` hk-ideator 3 + hk-scout 2(sonnet), `/deepen` hk-researcher ≤3(sonnet) + hk-redteam 1(opus), `/mvp` hk-reviewer 1(sonnet). 한 사람만 파이프라인을 돌리고 다른 팀원은 `share.md`를 본다.
-- 플랜 B(네트워크·API 장애): `hackathon/templates/`의 입력 카드·루브릭·원페이저 양식을 손으로 채운다. 순서와 게이트는 같다.
-
----
-
 ## 계보
 
 | 가져온 것 | 출처 |
@@ -456,6 +430,7 @@ GH_CONFIG_DIR=<GH_CONFIG_DIR 경로> gh auth status   # MACHINA_GH 계정
 | 투명성 헤더, 버전 4곳 동기화 | 비용 > 가치 |
 | dryforge의 고정 `docs/` 7종, worktree 8병렬 웨이브 | 소규모 프로젝트·네이티브 빌드 비용 |
 | dryforge의 "호스트 메모리 금지" | auto-memory를 적극 사용 |
+| 해커톤 파이프라인(/topic·/problem·/deepen·/mvp·/pitch·/share, hk-* 에이전트) | 2026-10-25 제거 — 더 쓰지 않음(git 이력에 남음) |
 | 상류(이전 팀 하네스) 정기 동기화 스킬 | 공유용 하네스에 특정 상류 의존이 생김 → 1회 이식으로 대체 |
 
 ### 결정 기록
